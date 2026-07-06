@@ -1,0 +1,1 @@
+const a=["One Time","EMI","Pending"],e=["UPI","Cash","Bank Transfer","Card","Cheque","Pending"],n=["Student Photo","Aadhaar ID Photo","Marks Card","Certificate","Payment proof","Additional documents"];export{e as a,n as d,a as p};
