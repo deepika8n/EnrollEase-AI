@@ -1,3 +1,8 @@
+import { GlobalWorkerOptions, getDocument } from "pdfjs-dist";
+import pdfWorkerSrc from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+
+GlobalWorkerOptions.workerSrc = pdfWorkerSrc;
+
 export function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -7,7 +12,28 @@ export function fileToDataUrl(file) {
   });
 }
 
+export const imageFileAccept = ".png,.jpg,.jpeg,image/png,image/jpeg";
 export const aadhaarFileAccept = ".png,.jpg,.jpeg,.pdf,image/png,image/jpeg,application/pdf";
+
+function dataUrlToUint8Array(source) {
+  const [, base64 = ""] = String(source || "").split(",", 2);
+  const binary = window.atob(base64);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return bytes;
+}
+
+function buildPdfLoadingSource(source) {
+  if (String(source || "").startsWith("data:application/pdf")) {
+    return { data: dataUrlToUint8Array(source) };
+  }
+
+  return source;
+}
 
 export function isPdfSource(source) {
   const value = String(source || "").toLowerCase();
@@ -151,4 +177,34 @@ export function downloadTextFile(fileName, content, type = "text/plain;charset=u
   link.download = fileName;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+export async function extractPdfTextFromSource(source) {
+  let loadingTask = null;
+  let activeDocument = null;
+
+  try {
+    loadingTask = getDocument(buildPdfLoadingSource(source));
+    activeDocument = await loadingTask.promise;
+
+    const pageTexts = [];
+    for (let pageNumber = 1; pageNumber <= activeDocument.numPages; pageNumber += 1) {
+      const page = await activeDocument.getPage(pageNumber);
+      const textContent = await page.getTextContent();
+      pageTexts.push(textContent.items.map((item) => item.str).join(" "));
+    }
+
+    return pageTexts.join("\n").trim();
+  } finally {
+    if (activeDocument) {
+      activeDocument.cleanup();
+      if (typeof activeDocument.destroy === "function") {
+        void activeDocument.destroy();
+      }
+    }
+
+    if (loadingTask) {
+      loadingTask.destroy();
+    }
+  }
 }

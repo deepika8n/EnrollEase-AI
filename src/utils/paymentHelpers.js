@@ -1,4 +1,4 @@
-import { addMonthsPreservingDay, toIsoDate } from "./dateMath";
+import { addMonthsPreservingDay, toIsoDate } from "./dateMath.js";
 
 export function hasValue(value) {
   return value !== null && value !== undefined && String(value).trim() !== "";
@@ -278,20 +278,31 @@ export function resolveLastPaymentDate({
     return latestPayment.date;
   }
 
-  return (toNumberOrNull(amountPaid) || 0) > 0 ? toIsoDate(enrolledDate || leadDate) : "";
+  return "";
 }
 
 export function resolveNextDueDate({
   paymentStatus = "",
+  paymentPlan = "",
   lastPaymentDate = "",
-  enrolledDate = "",
-  leadDate = "",
+  history = [],
   fallbackDate = "",
 } = {}) {
   if (String(paymentStatus || "").trim() === "Paid") {
     return "";
   }
 
-  const anchorDate = lastPaymentDate || enrolledDate || leadDate || fallbackDate;
+  const normalizedPaymentPlan = inferPaymentPlan({
+    paymentPlan,
+    history,
+  });
+  if (!isEmiPlan(normalizedPaymentPlan)) {
+    return "";
+  }
+
+  const anchorDate = resolveLastPaymentDate({
+    lastPaymentDate,
+    history,
+  });
   return anchorDate ? addMonthsPreservingDay(anchorDate, 1) : "";
 }

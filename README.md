@@ -13,12 +13,11 @@ Educational organizations often manage admissions across forms, spreadsheets, fi
 - Multi-section enrollment form for student, guardian, course, batch, payment, and remarks
 - Document upload center with Supabase Storage integration points
 - Enrollment records table with search, filters, and action buttons
-- Student profile page with documents, timeline, PDF generation, and email history
+- Student profile page with documents, timeline, and PDF generation
 - Verification panel for approval, rejection, corrections, and workflow progression
-- Email template manager with trigger placeholders for future automation
-- AI Enrollment Agent panel with goal-driven guidance and next-action recommendations
-- n8n webhook-ready automation service for workflow expansion
-- Sample data for courses, enrollments, documents, and email templates
+- n8n webhook-ready automation service for payment and follow-up emails
+- Optional Supabase server-side automation dispatcher for unattended email runs
+- Sample data for courses, enrollments, documents, and email logs
 
 ## Tech Stack
 
@@ -28,7 +27,7 @@ Educational organizations often manage admissions across forms, spreadsheets, fi
 - Authentication: Supabase Auth ready structure
 - Storage: Supabase Storage ready helpers
 - PDF Generation: jsPDF
-- Automation: n8n webhook placeholder service
+- Automation: n8n webhook service
 - Hosting: Vercel compatible
 
 ## Project Structure
@@ -66,6 +65,13 @@ Required environment variables:
 - `VITE_SUPABASE_ANON_KEY`
 - `VITE_AI_API_KEY` optional
 - `VITE_N8N_WEBHOOK_URL` optional
+- `VITE_N8N_WEBHOOK_SECRET` optional but recommended for n8n webhook validation
+- `VITE_SERVER_SIDE_AUTOMATIONS` optional, set to `true` after the Supabase cron dispatcher is deployed
+
+For unattended automation setup, use:
+
+- [`docs/supabase-server-automations.md`](/C:/Users/deepi/OneDrive/Desktop/EnrollEase%20AI/docs/supabase-server-automations.md:1)
+- [`supabase/server_automations.sql`](/C:/Users/deepi/OneDrive/Desktop/EnrollEase%20AI/supabase/server_automations.sql:1)
 
 ## How To Run Locally
 
@@ -74,20 +80,6 @@ Required environment variables:
 3. Open the local Vite URL shown in the terminal
 
 The app is local-first by default. If Supabase environment variables are missing, it still runs using built-in sample data so you can explore the complete MVP immediately.
-
-## Agentic AI Workflow
-
-The AI enrollment agent follows this pattern:
-
-1. Goal: complete or review an enrollment
-2. Analyze: inspect student status, payment, and documents
-3. Plan: decide the next steps
-4. Use Tools: query records, document metadata, or templates
-5. Take Action: submit, approve, reject, notify, or generate PDF
-6. Monitor: watch pending and missing items
-7. Update Status: move the enrollment forward
-
-In this MVP, the agent logic is implemented locally in `src/services/agentService.js` so the UX is already in place. You can later swap that logic for a live LLM or AI workflow engine.
 
 ## Future Enhancements
 

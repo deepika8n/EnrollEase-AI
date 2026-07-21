@@ -1,4 +1,4 @@
-import { parseDateValue, toIsoDate } from "./dateMath";
+import { parseDateValue, toIsoDate } from "./dateMath.js";
 
 export const formatCurrency = (value) =>
   new Intl.NumberFormat("en-IN", {

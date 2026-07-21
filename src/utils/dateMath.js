@@ -16,6 +16,12 @@ export function parseDateValue(value) {
       const [, year, month, day] = match;
       return new Date(Number(year), Number(month) - 1, Number(day));
     }
+
+    const dayFirstMatch = value.match(/^(\d{2})[-/](\d{2})[-/](\d{4})$/);
+    if (dayFirstMatch) {
+      const [, day, month, year] = dayFirstMatch;
+      return new Date(Number(year), Number(month) - 1, Number(day));
+    }
   }
 
   const parsed = new Date(value);

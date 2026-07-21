@@ -2,85 +2,150 @@ import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import AppShell from "../components/AppShell";
 import DataTable from "../components/DataTable";
-import DocumentPreview from "../components/DocumentPreview";
 import PageHeader from "../components/PageHeader";
 import StatusBadge from "../components/StatusBadge";
 import { useApp } from "../context/AppContext";
-import { openEnrollmentPdf } from "../services/pdfServiceFixed";
 import { formatCurrency, formatDate } from "../utils/formatters";
+import {
+  inferPaymentPlan,
+  resolveAmountPaid,
+  resolveRemainingAmount,
+  toNumberOrNull,
+} from "../utils/paymentHelpers";
 
-const paymentReceiptTypes = ["Payment Receipt", "Payment proof"];
+function getPaymentPlan(record) {
+  return inferPaymentPlan({
+    paymentPlan: record.enrollment.payment_plan,
+    installmentsPlanned: record.enrollment.installments_planned,
+    history: record.enrollment.payment_history,
+    amountPaid: resolveAmountPaid(record.enrollment.amount_paid, record.enrollment.payment_history),
+  }) || "N/A";
+}
 
-function findDocumentUrl(record, documentTypes) {
-  const types = Array.isArray(documentTypes) ? documentTypes : [documentTypes];
-  return record?.documents?.find((item) => types.includes(item.document_type))?.file_url || "";
+function getCourseFee(record) {
+  return toNumberOrNull(record.enrollment.total_fee) ?? toNumberOrNull(record.course?.fee);
 }
 
 export default function RecordsPage() {
-  const { portalRecords, logEmail } = useApp();
+  const { portalRecords, deleteStudentRecord } = useApp();
   const navigate = useNavigate();
-  const [filters, setFilters] = useState({ query: "", course: "", payment: "", stage: "" });
+  const [filters, setFilters] = useState({
+    query: "",
+    course: "",
+    batch: "",
+    plan: "",
+    payment: "",
+  });
+
+  const enrolledRecords = useMemo(
+    () => portalRecords.filter((record) => record.isEnrolledRecord),
+    [portalRecords],
+  );
 
   const records = useMemo(() => {
-    return portalRecords
+    return enrolledRecords
       .filter((record) => {
         const query = filters.query.trim().toLowerCase();
         const matchesQuery =
           !query
+          || (record.student.student_code || "").toLowerCase().includes(query)
           || record.student.full_name.toLowerCase().includes(query)
+          || (record.student.email || "").toLowerCase().includes(query)
           || record.student.phone.toLowerCase().includes(query)
-          || record.student.email.toLowerCase().includes(query);
+          || (record.course?.course_name || "").toLowerCase().includes(query)
+          || (record.enrollment.batch || "").toLowerCase().includes(query);
 
         return (
           matchesQuery
           && (!filters.course || record.course?.course_name === filters.course)
-          && (!filters.payment || record.enrollment.payment_status === filters.payment)
-          && (!filters.stage || record.currentStage === filters.stage)
+          && (!filters.batch || (record.enrollment.batch || "N/A") === filters.batch)
+          && (!filters.plan || getPaymentPlan(record) === filters.plan)
+          && (!filters.payment || (record.enrollment.payment_status || "Pending") === filters.payment)
         );
       })
-      .map((record) => ({
-        id: record.id,
-        student_id: record.student.id,
-        enrollment_id: record.enrollment.id,
-        preview: record.student.photo_url || findDocumentUrl(record, "Student Photo") || findDocumentUrl(record, "Aadhaar ID Photo") || findDocumentUrl(record, paymentReceiptTypes),
-        student_name: record.student.full_name,
-        course: record.course?.course_name || "N/A",
-        batch: record.enrollment.batch || (record.isEnquiryRecord ? "Not assigned" : "N/A"),
-        phone: record.student.phone || "N/A",
-        stage: record.currentStage,
-        payment_plan: record.paymentEligible ? record.enrollment.payment_plan : "Payment not initiated",
-        payment_status: record.paymentEligible ? record.enrollment.payment_status : "Payment not initiated",
-        due_amount: record.paymentEligible ? formatCurrency(record.dueAmount) : "Payment not initiated",
-        enrollment_date: formatDate(record.enrollment.enrolled_date || record.enrollment.lead_date),
-        raw: record,
-      }));
-  }, [filters, portalRecords]);
+      .map((record) => {
+        const courseFee = getCourseFee(record);
+        const amountPaid = resolveAmountPaid(record.enrollment.amount_paid, record.enrollment.payment_history);
+        const dueAmount = resolveRemainingAmount(courseFee, amountPaid);
+
+        return {
+          id: record.id,
+          student_id: record.student.id,
+          enrollment_id: record.enrollment.id,
+          student_code: record.student.student_code || "N/A",
+          student_name: record.student.full_name,
+          student_email: record.student.email || "N/A",
+          enrollment_date: formatDate(record.enrollment.enrolled_date || record.enrollment.lead_date),
+          course: record.course?.course_name || "N/A",
+          batch: record.enrollment.batch || "N/A",
+          phone: record.student.phone || "N/A",
+          course_fee: courseFee === null ? "N/A" : formatCurrency(courseFee),
+          payment_plan: getPaymentPlan(record),
+          payment_status: record.enrollment.payment_status || "Pending",
+          due_amount: dueAmount === null ? "N/A" : formatCurrency(dueAmount),
+        };
+      });
+  }, [enrolledRecords, filters]);
+
+  const courseOptions = useMemo(
+    () => [...new Set(enrolledRecords.map((record) => record.course?.course_name).filter(Boolean))],
+    [enrolledRecords],
+  );
+
+  const batchOptions = useMemo(
+    () => [...new Set(enrolledRecords.map((record) => record.enrollment.batch || "N/A"))],
+    [enrolledRecords],
+  );
+
+  const planOptions = useMemo(
+    () => [...new Set(enrolledRecords.map((record) => getPaymentPlan(record)).filter(Boolean))],
+    [enrolledRecords],
+  );
 
   return (
     <AppShell>
       <PageHeader
         eyebrow="Admissions records"
         title="Student records"
-        description=""
+        description="Search, filter, and review enrolled students from one structured records workspace."
         actions={[
-          <Link key="new" to="/enrollments/new" className="button-primary">
+          <Link key="new" to="/enrollment" className="button-primary">
             Add student manually
           </Link>,
         ]}
       />
 
       <div className="panel mb-6 p-6">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="mb-5">
+          <p className="section-kicker">Filters</p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           <input
-            placeholder="Search name, phone, email"
+            placeholder="Search code, name or phone"
             value={filters.query}
             onChange={(event) => setFilters((prev) => ({ ...prev, query: event.target.value }))}
           />
           <select value={filters.course} onChange={(event) => setFilters((prev) => ({ ...prev, course: event.target.value }))}>
             <option value="">All courses</option>
-            {[...new Set(portalRecords.map((record) => record.course?.course_name).filter(Boolean))].map((course) => (
+            {courseOptions.map((course) => (
               <option key={course} value={course}>
                 {course}
+              </option>
+            ))}
+          </select>
+          <select value={filters.batch} onChange={(event) => setFilters((prev) => ({ ...prev, batch: event.target.value }))}>
+            <option value="">All batches</option>
+            {batchOptions.map((batch) => (
+              <option key={batch} value={batch}>
+                {batch}
+              </option>
+            ))}
+          </select>
+          <select value={filters.plan} onChange={(event) => setFilters((prev) => ({ ...prev, plan: event.target.value }))}>
+            <option value="">All plans</option>
+            {planOptions.map((plan) => (
+              <option key={plan} value={plan}>
+                {plan}
               </option>
             ))}
           </select>
@@ -92,43 +157,19 @@ export default function RecordsPage() {
               </option>
             ))}
           </select>
-          <select value={filters.stage} onChange={(event) => setFilters((prev) => ({ ...prev, stage: event.target.value }))}>
-            <option value="">All stages</option>
-            {["Enrolled", "Enquiry", "Dropout"].map((stage) => (
-              <option key={stage} value={stage}>
-                {stage}
-              </option>
-            ))}
-          </select>
         </div>
       </div>
 
       <DataTable
         columns={[
-          {
-            key: "preview",
-            label: "Preview",
-            render: (value, row) => (
-              <div className="w-[76px]">
-                <DocumentPreview
-                  src={value}
-                  alt={`${row.student_name} document preview`}
-                  title={`${row.student_name} document preview`}
-                  fileName={`${row.student_name}-document`}
-                  className="h-16 w-16 rounded-2xl border border-slate-200 bg-slate-50 object-cover"
-                />
-              </div>
-            ),
-          },
-          { key: "student_name", label: "Student" },
+          { key: "student_code", label: "Student ID" },
+          { key: "student_name", label: "Name" },
+          { key: "student_email", label: "Email" },
+          { key: "enrollment_date", label: "Lead / enrolled date" },
           { key: "course", label: "Course" },
           { key: "batch", label: "Batch" },
           { key: "phone", label: "Phone" },
-          {
-            key: "stage",
-            label: "Stage",
-            render: (value) => <StatusBadge value={value} />,
-          },
+          { key: "course_fee", label: "Course fee" },
           {
             key: "payment_plan",
             label: "Plan",
@@ -136,7 +177,6 @@ export default function RecordsPage() {
           },
           { key: "payment_status", label: "Payment", badge: true },
           { key: "due_amount", label: "Due" },
-          { key: "enrollment_date", label: "Date" },
           {
             key: "actions",
             label: "Actions",
@@ -144,7 +184,7 @@ export default function RecordsPage() {
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  className="button-secondary px-3 py-2 text-xs"
                   onClick={(event) => {
                     event.stopPropagation();
                     navigate(`/students/${row.student_id}`);
@@ -152,42 +192,22 @@ export default function RecordsPage() {
                 >
                   View profile
                 </button>
-                {row.raw.isEnquiryRecord ? (
-                  <button
-                    type="button"
-                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      navigate(`/enrollments/new?convert=${row.enrollment_id}`);
-                    }}
-                  >
-                    Convert
-                  </button>
-                ) : null}
                 <button
                   type="button"
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                  onClick={(event) => {
+                  className="button-secondary px-3 py-2 text-xs"
+                  onClick={async (event) => {
                     event.stopPropagation();
-                    openEnrollmentPdf({
-                      instituteName: "EnrollEase AI Institute",
-                      student: row.raw.student,
-                      course: row.raw.course,
-                      enrollment: row.raw.enrollment,
-                    });
+                    const shouldDelete = window.confirm(`Delete ${row.student_name} from student records?`);
+                    if (!shouldDelete) return;
+
+                    try {
+                      await deleteStudentRecord(row.enrollment_id);
+                    } catch (error) {
+                      window.alert(error.message || "Student record could not be deleted.");
+                    }
                   }}
                 >
-                  PDF
-                </button>
-                <button
-                  type="button"
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    logEmail("Enrollment confirmed", row.raw.enrollment);
-                  }}
-                >
-                  Email
+                  Delete
                 </button>
               </div>
             ),

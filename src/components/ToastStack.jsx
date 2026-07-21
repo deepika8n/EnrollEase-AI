@@ -10,13 +10,21 @@ export default function ToastStack() {
         <div
           key={item.id}
           className={clsx(
-            "rounded-2xl border px-4 py-3 shadow-soft backdrop-blur-xl",
+            "rounded-[22px] border px-4 py-4 shadow-soft backdrop-blur-xl",
             item.type === "success"
-              ? "border-emerald-400/40 bg-emerald-500/15"
-              : "border-amber-300/40 bg-amber-400/15",
+              ? "border-accent-200 bg-white/95"
+              : "border-gold-200 bg-white/95",
           )}
         >
-          <p className="font-semibold text-slate-900">{item.title}</p>
+          <div className="flex items-center gap-3">
+            <span
+              className={clsx(
+                "h-2.5 w-2.5 rounded-full",
+                item.type === "success" ? "bg-accent-500" : "bg-gold-300",
+              )}
+            />
+            <p className="font-semibold text-slate-900">{item.title}</p>
+          </div>
         </div>
       ))}
     </div>

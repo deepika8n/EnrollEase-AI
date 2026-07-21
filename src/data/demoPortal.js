@@ -625,41 +625,9 @@ const enrollmentSeeds = [
   },
 ];
 
-export const sampleEmailTemplates = [
-  {
-    id: "template-followup",
-    template_name: "Follow-up reminder",
-    subject: "Quick follow-up on your course enquiry",
-    body: "Hi there, just checking whether you need any help with course details, fees, or batch timings.",
-  },
-  {
-    id: "template-enrolled",
-    template_name: "Enrollment confirmed",
-    subject: "Your enrollment is confirmed",
-    body: "Welcome to EnrollEase AI. Your seat has been reserved and the onboarding team will reach out shortly.",
-  },
-  {
-    id: "template-emi",
-    template_name: "EMI due reminder",
-    subject: "Friendly reminder: upcoming EMI payment",
-    body: "This is a reminder that your next installment is due soon. Please contact us if you need support.",
-  },
-];
-
 export const sampleEmailLogs = [
   { id: "email-1", enrollment_id: "enrollment-karthik", email_type: "EMI due reminder", status: "Sent", sent_at: "2026-06-26" },
   { id: "email-2", enrollment_id: "enrollment-aditi", email_type: "Follow-up reminder", status: "Queued", sent_at: "2026-06-27" },
-];
-
-export const sampleAgentLogs = [
-  {
-    id: "agent-1",
-    enrollment_id: "enrollment-joseph",
-    user_message: "What should we share with Joseph to improve conversion?",
-    agent_response: "Share the placement deck, alumni projects, and the next Morning Pro batch start date to strengthen the conversation.",
-    next_action: "Send placement deck and batch timeline",
-    created_at: "2026-06-27T11:00:00.000Z",
-  },
 ];
 
 export function createDemoStudents() {
@@ -742,10 +710,7 @@ export function createDemoPortalState() {
     courses: demoCourses,
     enrollments,
     documents,
-    emailTemplates: sampleEmailTemplates,
     emailLogs: sampleEmailLogs,
-    agentLogs: sampleAgentLogs,
-    pdfRecords: [],
     auditLogs: [],
     adminAccount: demoAdminAccount,
   };

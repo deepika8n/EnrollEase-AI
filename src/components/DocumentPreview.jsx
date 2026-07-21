@@ -4,11 +4,12 @@ import pdfWorkerSrc from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { getDocumentFileName, getDocumentSourceKind, isOpenableSource } from "../utils/fileHelpers";
 
 GlobalWorkerOptions.workerSrc = pdfWorkerSrc;
+const pdfZoomLevels = [100, 125, 150, 200, 250, 300];
 
 function PreviewShell({ children, className = "" }) {
   return (
     <div
-      className={`flex h-full min-h-[220px] w-full flex-col items-center justify-center gap-3 rounded-[24px] border border-slate-200 bg-white p-5 text-center ${className}`.trim()}
+      className={`flex h-full min-h-[220px] w-full flex-col items-center justify-center gap-3 rounded-[24px] border border-slate-200 bg-white p-5 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] ${className}`.trim()}
     >
       {children}
     </div>
@@ -17,7 +18,7 @@ function PreviewShell({ children, className = "" }) {
 
 function PdfIcon() {
   return (
-    <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-rose-50 text-rose-600">
+    <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-50 text-brand-500">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-8 w-8" aria-hidden="true">
         <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 3.75h6l4.5 4.5v10.5A1.5 1.5 0 0 1 16.5 20.25h-9A1.5 1.5 0 0 1 6 18.75v-13.5A1.5 1.5 0 0 1 7.5 3.75Z" />
         <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 3.75v4.5H18" />
@@ -31,7 +32,7 @@ function PdfIcon() {
 
 function FileIcon() {
   return (
-    <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-slate-500">
+    <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-surface-100 text-slate-500">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-8 w-8" aria-hidden="true">
         <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 3.75h6l4.5 4.5v10.5A1.5 1.5 0 0 1 16.5 20.25h-9A1.5 1.5 0 0 1 6 18.75v-13.5A1.5 1.5 0 0 1 7.5 3.75Z" />
         <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 3.75v4.5H18" />
@@ -72,18 +73,23 @@ function FallbackCard({ kind, fileName, className = "" }) {
   );
 }
 
-export default function DocumentPreview({ src, alt, title, fileName, className = "" }) {
+export default function DocumentPreview({ src, alt, title, fileName, className = "", enablePdfZoom = false }) {
   const [hasImageError, setHasImageError] = useState(false);
   const [pdfThumbnail, setPdfThumbnail] = useState("");
   const [pdfStatus, setPdfStatus] = useState("idle");
+  const [pdfZoom, setPdfZoom] = useState(pdfZoomLevels[0]);
   const sourceKind = getDocumentSourceKind(src);
   const displayName = useMemo(
     () => fileName || getDocumentFileName(src, title || alt || "Document"),
     [alt, fileName, src, title],
   );
+  const zoomIndex = pdfZoomLevels.indexOf(pdfZoom);
+  const canZoomOut = zoomIndex > 0;
+  const canZoomIn = zoomIndex < pdfZoomLevels.length - 1;
 
   useEffect(() => {
     setHasImageError(false);
+    setPdfZoom(pdfZoomLevels[0]);
   }, [src]);
 
   useEffect(() => {
@@ -108,7 +114,7 @@ export default function DocumentPreview({ src, alt, title, fileName, className =
 
         const page = await activeDocument.getPage(1);
         const initialViewport = page.getViewport({ scale: 1 });
-        const maxPreviewHeight = 250;
+        const maxPreviewHeight = enablePdfZoom ? 1400 : 250;
         const deviceScale = Math.min(window.devicePixelRatio || 1, 2);
         const renderScale = (maxPreviewHeight / initialViewport.height) * deviceScale;
         const viewport = page.getViewport({ scale: renderScale });
@@ -175,7 +181,7 @@ export default function DocumentPreview({ src, alt, title, fileName, className =
         loadingTask.destroy();
       }
     };
-  }, [sourceKind, src]);
+  }, [enablePdfZoom, sourceKind, src]);
 
   if (!String(src || "").trim() || String(src || "").trim() === "#") {
     return (
@@ -198,6 +204,51 @@ export default function DocumentPreview({ src, alt, title, fileName, className =
 
   if (sourceKind === "pdf") {
     if (pdfStatus === "ready" && pdfThumbnail) {
+      if (enablePdfZoom) {
+        return (
+          <div className={`flex h-full min-h-[260px] w-full flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white ${className}`.trim()}>
+            <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+              <p className="text-sm font-medium text-slate-500">Zoom and scroll to inspect the Aadhaar PDF.</p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
+                  onClick={() => canZoomOut && setPdfZoom(pdfZoomLevels[zoomIndex - 1])}
+                  disabled={!canZoomOut}
+                >
+                  -
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-600"
+                  onClick={() => setPdfZoom(pdfZoomLevels[0])}
+                >
+                  {pdfZoom}%
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
+                  onClick={() => canZoomIn && setPdfZoom(pdfZoomLevels[zoomIndex + 1])}
+                  disabled={!canZoomIn}
+                >
+                  +
+                </button>
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto bg-slate-50 p-4">
+              <div className="flex min-h-full min-w-full items-start justify-center">
+                <img
+                  src={pdfThumbnail}
+                  alt={alt}
+                  style={{ width: `${pdfZoom}%`, maxWidth: "none" }}
+                  className="h-auto rounded-[20px] border border-slate-200 bg-white shadow-sm"
+                />
+              </div>
+            </div>
+          </div>
+        );
+      }
+
       return (
         <img
           src={pdfThumbnail}
@@ -210,7 +261,7 @@ export default function DocumentPreview({ src, alt, title, fileName, className =
     if (pdfStatus === "loading") {
       return (
         <PreviewShell className={className}>
-          <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-sky-500" aria-hidden="true" />
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-accent-500" aria-hidden="true" />
           <p className="text-sm font-medium text-slate-500">Loading preview...</p>
         </PreviewShell>
       );

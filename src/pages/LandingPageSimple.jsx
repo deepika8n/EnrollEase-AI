@@ -1,22 +1,37 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import BrandLogo from "../components/BrandLogo";
 import heroSlide1 from "../assets/hero-slide-2.png";
 import heroSlide2 from "../assets/hero-slide-3.png";
 import heroSlide3 from "../assets/enrollment-hero.png";
-import enrolleaseLogo from "../assets/enrollease-logo.svg";
-import { formatCurrency } from "../utils/formatters";
-import { publicCourseCatalog } from "../data/courseCatalog";
 
 const slides = [
-  { image: heroSlide1, title: "Admissions" },
-  { image: heroSlide2, title: "Courses" },
-  { image: heroSlide3, title: "Enrollments" },
+  { image: heroSlide1, title: "Smart admission tracking" },
+  { image: heroSlide2, title: "Simple course visibility" },
+  { image: heroSlide3, title: "Clean enrollment workflows" },
 ];
+
+const heroWords = [
+  "Transforming",
+  "Student",
+  "Admissions",
+  "Into",
+  "Intelligent",
+  "Decisions",
+];
+
+const WORD_DURATION_MS = 250;
+const WORD_STAGGER_MS = 250;
+const HEADING_HOLD_MS = 3000;
+const HEADING_FADE_MS = 500;
+const CTA_REVEAL_DELAY_MS = 250;
 
 export default function LandingPageSimple() {
   const [slideIndex, setSlideIndex] = useState(0);
-  const [activeCourseKey, setActiveCourseKey] = useState(publicCourseCatalog[0].key);
-  const activeCourse = publicCourseCatalog.find((course) => course.key === activeCourseKey) || publicCourseCatalog[0];
+  const [visibleWords, setVisibleWords] = useState(1);
+  const [headingFading, setHeadingFading] = useState(false);
+  const [subtitleVisible, setSubtitleVisible] = useState(false);
+  const [ctaVisible, setCtaVisible] = useState(false);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -25,51 +40,116 @@ export default function LandingPageSimple() {
     return () => window.clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    const timeouts = [];
+
+    const schedule = (callback, delay) => {
+      const timeoutId = window.setTimeout(() => {
+        if (!cancelled) {
+          callback();
+        }
+      }, delay);
+      timeouts.push(timeoutId);
+    };
+
+    const runHeroCycle = () => {
+      setVisibleWords(1);
+      setHeadingFading(false);
+      setSubtitleVisible(false);
+      setCtaVisible(false);
+
+      for (let index = 1; index < heroWords.length; index += 1) {
+        schedule(() => setVisibleWords(index + 1), index * WORD_STAGGER_MS);
+      }
+
+      const headingFinishedAt = (heroWords.length - 1) * WORD_STAGGER_MS + WORD_DURATION_MS;
+      schedule(() => setSubtitleVisible(true), headingFinishedAt);
+      schedule(() => setCtaVisible(true), headingFinishedAt + CTA_REVEAL_DELAY_MS);
+      schedule(() => setHeadingFading(true), headingFinishedAt + HEADING_HOLD_MS);
+      schedule(runHeroCycle, headingFinishedAt + HEADING_HOLD_MS + HEADING_FADE_MS);
+    };
+
+    runHeroCycle();
+
+    return () => {
+      cancelled = true;
+      timeouts.forEach((timeoutId) => window.clearTimeout(timeoutId));
+    };
+  }, []);
+
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,#f9fcff_0%,#eef7ff_100%)]">
-      <header className="border-b border-sky-100 bg-white/85 backdrop-blur">
+    <div className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(11,53,88,0.08),transparent_24%),radial-gradient(circle_at_82%_10%,rgba(77,122,156,0.07),transparent_20%),radial-gradient(circle_at_66%_78%,rgba(30,207,107,0.05),transparent_17%),linear-gradient(180deg,#fcfdff_0%,#f5f8fb_100%)] text-brand-500">
+      <div className="pointer-events-none absolute left-[-4rem] top-[-3rem] h-72 w-72 rounded-full bg-brand-200/30 blur-[110px]" />
+      <div className="pointer-events-none absolute right-[-5rem] top-14 h-[22rem] w-[22rem] rounded-full bg-brand-100/35 blur-[130px]" />
+      <div className="pointer-events-none absolute bottom-[-8rem] left-[22%] h-[18rem] w-[18rem] rounded-full bg-accent-100/25 blur-[140px]" />
+
+      <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/78 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-5 md:px-8 lg:px-12">
-          <div className="flex items-center gap-4">
-            <img src={enrolleaseLogo} alt="EnrollEase AI logo" className="h-14 w-14 rounded-[18px]" />
-            <div>
-              <p className="text-sm uppercase tracking-[0.34em] text-sky-700">EnrollEase AI</p>
-              <p className="mt-1 text-sm text-slate-500">Admissions portal</p>
-            </div>
-          </div>
-          <Link to="/login" className="button-primary">
-            Admin Login
+          <BrandLogo
+            size="sm"
+            subtitle="Admissions OS"
+            className="gap-4"
+            iconClassName="h-[3.15rem] w-[3.15rem] rounded-[18px] shadow-[0_16px_30px_rgba(11,53,88,0.12)]"
+            wordmarkClassName="text-[1.95rem] tracking-[-0.055em]"
+            subtitleClassName="text-[11px] tracking-[0.28em] text-brand-500/72"
+          />
+          <Link
+            to="/login?fresh=1"
+            className="inline-flex items-center justify-center rounded-2xl bg-gradient-to-b from-brand-500 to-brand-700 px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(11,53,88,0.18)] transition duration-200 hover:-translate-y-0.5 hover:brightness-105 hover:shadow-[0_20px_40px_rgba(11,53,88,0.22)] focus:outline-none focus:ring-4 focus:ring-accent-100"
+          >
+            Launch Portal
           </Link>
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 py-10 md:px-8 lg:px-12 lg:py-14">
-        <section className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr]">
-          <div className="flex flex-col justify-center">
-            <p className="text-sm uppercase tracking-[0.3em] text-sky-700">Simple admission management</p>
-            <h1 className="mt-4 font-display text-5xl font-bold leading-tight text-slate-950 md:text-6xl">
-              Manage enquiries, enrollments, and payments.
+      <main id="top" className="mx-auto max-w-7xl px-4 py-10 md:px-8 lg:px-12 lg:py-16">
+        <section className="grid gap-10 lg:grid-cols-[0.92fr_1.08fr] lg:items-center">
+          <div className="fade-in-up">
+            <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-brand-500/72">ENROLLEASE AI</p>
+            <h1
+              aria-label="Transforming Student Admissions Into Intelligent Decisions"
+              className={`hero-heading-live mt-4 min-h-[5.9em] max-w-3xl font-display text-5xl font-semibold leading-[0.98] tracking-[-0.06em] text-slate-950 md:text-6xl ${headingFading ? "is-fading" : ""}`}
+            >
+              {heroWords.map((word, index) => (
+                <span
+                  key={word}
+                  className={`hero-word ${index < visibleWords ? "is-visible" : "is-hidden"}`}
+                >
+                  {word}
+                </span>
+              ))}
             </h1>
-            <p className="mt-4 max-w-xl text-lg text-slate-600">
-              Student records, EMI tracking, one-time payments, and course admissions in one place.
-            </p>
-            <div className="mt-8 flex flex-wrap gap-4">
-              <Link to="/login" className="button-primary">
-                Open Portal
-              </Link>
-            </div>
+            {subtitleVisible ? (
+              <p className="fade-in-up mt-6 max-w-2xl text-base leading-8 text-slate-600 md:text-lg">
+                Built to streamline enquiries, admissions, documents, and fee management.
+              </p>
+            ) : null}
+            {ctaVisible ? (
+              <div className="fade-in-up mt-9 flex flex-wrap gap-4">
+                <Link
+                  to="/login?fresh=1"
+                  className="inline-flex items-center justify-center rounded-2xl bg-gradient-to-b from-brand-500 to-brand-700 px-5 py-3 text-sm font-semibold text-white shadow-[0_18px_36px_rgba(11,53,88,0.18)] transition duration-200 hover:-translate-y-0.5 hover:brightness-105 hover:shadow-[0_22px_42px_rgba(11,53,88,0.22)] focus:outline-none focus:ring-4 focus:ring-accent-100"
+                >
+                  Open EnrollEase AI
+                </Link>
+              </div>
+            ) : null}
           </div>
 
-          <div className="panel overflow-hidden p-4">
-            <div className="relative overflow-hidden rounded-[28px]">
+          <div className="overflow-hidden rounded-[32px] border border-white/85 bg-white/84 p-4 shadow-[0_28px_70px_rgba(9,30,66,0.10)] backdrop-blur-xl md:p-5">
+            <div className="relative overflow-hidden rounded-[30px]">
               <div
                 className="flex transition-transform duration-1000 ease-out"
                 style={{ transform: `translateX(-${slideIndex * 100}%)` }}
               >
                 {slides.map((slide) => (
                   <div key={slide.title} className="relative min-w-full">
-                    <img src={slide.image} alt={slide.title} className="h-[420px] w-full object-cover object-center" />
-                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/60 to-transparent p-6">
-                      <p className="font-display text-3xl font-bold text-white">{slide.title}</p>
+                    <img src={slide.image} alt={slide.title} className="h-[460px] w-full object-cover object-center" />
+                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-brand-800/86 via-brand-500/22 to-transparent p-7">
+                      <p className="mt-3 font-display text-4xl font-semibold tracking-[-0.04em] text-white">
+                        {slide.title}
+                      </p>
                     </div>
                   </div>
                 ))}
@@ -81,7 +161,7 @@ export default function LandingPageSimple() {
                     type="button"
                     aria-label={`Show slide ${index + 1}`}
                     onClick={() => setSlideIndex(index)}
-                    className={`h-2.5 rounded-full ${slideIndex === index ? "w-8 bg-white" : "w-2.5 bg-white/60"}`}
+                    className={`h-2.5 rounded-full transition ${slideIndex === index ? "w-9 bg-white shadow-[0_0_18px_rgba(255,255,255,0.35)]" : "w-2.5 bg-white/55"}`}
                   />
                 ))}
               </div>
@@ -89,54 +169,13 @@ export default function LandingPageSimple() {
           </div>
         </section>
 
-        <section id="courses" className="mt-14">
-          <div>
-            <p className="text-sm uppercase tracking-[0.28em] text-sky-700">Available Courses</p>
-            <h2 className="mt-2 font-display text-3xl font-bold text-slate-950">Course List</h2>
-          </div>
-
-          <div className="mt-8 flex flex-wrap gap-3">
-            {publicCourseCatalog.map((course) => (
-              <button
-                key={course.key}
-                type="button"
-                onClick={() => setActiveCourseKey(course.key)}
-                className={`rounded-full border px-5 py-3 text-sm font-semibold transition ${
-                  activeCourse.key === course.key
-                    ? "border-sky-600 bg-sky-600 text-white shadow-[0_18px_40px_rgba(14,116,214,0.22)]"
-                    : "border-slate-200 bg-white text-slate-700 hover:border-sky-200 hover:text-slate-950"
-                }`}
-              >
-                {course.course_name}
-              </button>
-            ))}
-          </div>
-
-          <div className="panel mt-8 overflow-hidden p-4">
-            <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
-              <img src={activeCourse.image} alt={activeCourse.course_name} className="h-full w-full rounded-[28px] object-cover" />
-
-              <div className="px-2 py-3">
-                <p className="text-sm uppercase tracking-[0.24em] text-sky-700">{activeCourse.mode}</p>
-                <h3 className="mt-3 font-display text-4xl font-bold text-slate-950">{activeCourse.course_name}</h3>
-                <div className="mt-6 space-y-3 text-base leading-7 text-slate-600">
-                  {activeCourse.summary.map((line) => (
-                    <p key={line}>{line}</p>
-                  ))}
-                </div>
-                <div className="mt-8 flex flex-wrap gap-3">
-                  <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                    Duration <span className="ml-2 font-semibold text-slate-900">{activeCourse.duration}</span>
-                  </div>
-                  <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                    Fee <span className="ml-2 font-semibold text-slate-900">{formatCurrency(activeCourse.fee)}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
       </main>
+
+      <footer className="border-t border-slate-200/80 bg-white/74 backdrop-blur-xl">
+        <div className="mx-auto max-w-7xl px-4 py-8 text-center md:px-8 lg:px-12">
+          <p className="text-sm font-medium text-slate-600">© EnrollEase AI</p>
+        </div>
+      </footer>
     </div>
   );
 }

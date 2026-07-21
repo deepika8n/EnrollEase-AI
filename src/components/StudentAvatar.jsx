@@ -33,11 +33,11 @@ export default function StudentAvatar({
       <div
         aria-label={alt || name || "Student avatar"}
         className={clsx(
-          "flex items-center justify-center overflow-hidden rounded-2xl border border-sky-100 bg-[linear-gradient(135deg,#eff6ff_0%,#e2e8f0_100%)]",
+          "flex items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-[linear-gradient(135deg,#ffffff_0%,#eef4f7_100%)] shadow-[0_10px_24px_rgba(7,30,52,0.06)]",
           fallbackClassName || className,
         )}
       >
-        <span className={clsx("font-semibold uppercase tracking-[0.12em] text-slate-700", textClassName)}>
+        <span className={clsx("font-semibold uppercase tracking-[0.12em] text-brand-500", textClassName)}>
           {initials}
         </span>
       </div>
