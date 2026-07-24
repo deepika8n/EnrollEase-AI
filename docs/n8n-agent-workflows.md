@@ -119,6 +119,42 @@ Message
 {{$json.body.payload.html || $json.body.payload.text}}
 ```
 
+Attachments
+
+The app now sends profile-PDF attachment data for `Student Profile Update` and `Profile Send Mail` requests in:
+
+- `{{$json.body.payload.attachments}}`
+- `{{$json.body.payload.attachment}}`
+- `{{$json.body.payload.profilePdfAttachment}}`
+
+To make Gmail attach the PDF, add a `Code` node before Gmail on the shared email route and use:
+
+```javascript
+const payload = $json.body?.payload || {};
+const attachment = payload.profilePdfAttachment || payload.attachment || payload.attachments?.[0];
+
+if (!attachment?.contentBase64) {
+  return [{ json: payload }];
+}
+
+return [{
+  json: payload,
+  binary: {
+    student_profile_pdf: {
+      data: attachment.contentBase64,
+      fileName: attachment.fileName || 'student-profile.pdf',
+      mimeType: attachment.mimeType || 'application/pdf',
+    },
+  },
+}];
+```
+
+Then in the Gmail node, set `Attachments` to:
+
+```text
+student_profile_pdf
+```
+
 Then connect to `Respond to Webhook` with a success payload such as:
 
 ```json

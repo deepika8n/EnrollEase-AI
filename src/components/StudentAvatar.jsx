@@ -20,15 +20,39 @@ export default function StudentAvatar({
   fallbackClassName = "",
   textClassName = "",
 }) {
-  const [imageFailed, setImageFailed] = useState(false);
   const normalizedSrc = String(src || "").trim();
   const initials = useMemo(() => buildInitials(name), [name]);
+  const [displaySrc, setDisplaySrc] = useState(normalizedSrc);
+  const [hasLoadedImage, setHasLoadedImage] = useState(Boolean(normalizedSrc));
 
   useEffect(() => {
-    setImageFailed(false);
+    if (!normalizedSrc) {
+      setDisplaySrc("");
+      setHasLoadedImage(false);
+      return;
+    }
+
+    // Preload the next avatar before swapping sources so temporary fetch misses
+    // do not make the UI flash back to initials.
+    const image = new Image();
+    image.onload = () => {
+      setDisplaySrc(normalizedSrc);
+      setHasLoadedImage(true);
+    };
+    image.onerror = () => {
+      if (!displaySrc) {
+        setHasLoadedImage(false);
+      }
+    };
+    image.src = normalizedSrc;
+
+    return () => {
+      image.onload = null;
+      image.onerror = null;
+    };
   }, [normalizedSrc]);
 
-  if (!normalizedSrc || imageFailed) {
+  if (!displaySrc || !hasLoadedImage) {
     return (
       <div
         aria-label={alt || name || "Student avatar"}
@@ -46,10 +70,14 @@ export default function StudentAvatar({
 
   return (
     <img
-      src={normalizedSrc}
+      src={displaySrc}
       alt={alt || name || "Student avatar"}
       className={className}
-      onError={() => setImageFailed(true)}
+      onError={() => {
+        if (!displaySrc) {
+          setHasLoadedImage(false);
+        }
+      }}
     />
   );
 }

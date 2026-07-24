@@ -397,6 +397,11 @@ export async function generateEnrollmentPdf(payload) {
   return doc.output("bloburl");
 }
 
+export async function generateEnrollmentPdfBlob(payload) {
+  const doc = await buildEnrollmentPdfDocument(payload);
+  return doc.output("blob");
+}
+
 export async function openEnrollmentPdf(payload) {
   const url = await generateEnrollmentPdf(payload);
   window.open(url, "_blank", "noopener,noreferrer");

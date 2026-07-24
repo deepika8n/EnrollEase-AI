@@ -85,7 +85,7 @@ export function getDisplayEnquiryFollowUpDate({
   }
 
   if (compareIsoDates(normalizedFollowUpDate, initialFollowUpDate) <= 0) {
-    return initialFollowUpDate;
+    return finalFollowUpDate || initialFollowUpDate;
   }
 
   return finalFollowUpDate || normalizedFollowUpDate;

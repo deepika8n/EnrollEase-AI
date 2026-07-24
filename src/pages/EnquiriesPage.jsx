@@ -1,10 +1,11 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppShell from "../components/AppShell";
 import PageHeader from "../components/PageHeader";
 import { useApp } from "../context/AppContext";
 import {
   compareIsoDates,
+  getDisplayEnquiryFollowUpDate,
   getFinalEnquiryFollowUpDate,
   getInitialEnquiryFollowUpDate,
   getTodayIsoDate,
@@ -75,11 +76,16 @@ function buildInitials(name = "") {
   return `${parts[0][0] || ""}${parts[1][0] || ""}`.toUpperCase();
 }
 
+function matchesKnownNameToken(token = "", prefixes = []) {
+  const normalizedToken = String(token || "").trim().toLowerCase();
+  return prefixes.some((name) => normalizedToken.startsWith(name) || normalizedToken.endsWith(name));
+}
+
 function getStudentTone(student = {}) {
   const rawGender = String(student.gender || student.sex || student.student_gender || "").trim().toLowerCase();
   const firstName = String(student.full_name || "").trim().split(/\s+/)[0]?.toLowerCase() || "";
-  const isGirlName = GIRL_NAME_PREFIXES.some((name) => firstName.startsWith(name));
-  const isBoyName = BOY_NAME_PREFIXES.some((name) => firstName.startsWith(name));
+  const isGirlName = matchesKnownNameToken(firstName, GIRL_NAME_PREFIXES);
+  const isBoyName = matchesKnownNameToken(firstName, BOY_NAME_PREFIXES);
 
   if (rawGender === "female" || rawGender === "girl" || rawGender === "f" || isGirlName) {
     return {
@@ -109,11 +115,7 @@ function isFollowUpQueued(log) {
   return String(log?.status || "").trim() === "Queued";
 }
 
-function getTodayStart() {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return today;
-}
+const FOLLOW_UP_SUCCESS_HIGHLIGHT_MS = 5 * 60 * 1000;
 
 function isValidStudentEmail(email = "") {
   const safeEmail = String(email || "").trim().toLowerCase();
@@ -141,12 +143,17 @@ function isCsvFile(file) {
   return ["text/csv", "application/vnd.ms-excel"].includes(fileType);
 }
 
-function getFollowUpMeta(record, logs = []) {
-  const nextFollowUpDate = record?.enrollment?.follow_up_date || "";
+function getFollowUpMeta(record, logs = [], nowMs = Date.now()) {
+  const storedFollowUpDate = record?.enrollment?.follow_up_date || "";
   const leadDate = record?.enrollment?.lead_date || record?.enrollment?.created_at || "";
   const initialFollowUpDate = getInitialEnquiryFollowUpDate(leadDate);
   const finalFollowUpDate = getFinalEnquiryFollowUpDate(leadDate);
   const todayIsoDate = getTodayIsoDate();
+  const nextFollowUpDate = getDisplayEnquiryFollowUpDate({
+    leadDate,
+    followUpDate: storedFollowUpDate,
+    today: todayIsoDate,
+  }) || storedFollowUpDate;
   const safeEmail = String(record?.student?.email || "").trim();
   const hasReachableEmail = isValidStudentEmail(safeEmail);
   const successfulLogs = logs.filter(isFollowUpSuccessful);
@@ -154,6 +161,8 @@ function getFollowUpMeta(record, logs = []) {
   const latestSuccessfulLog = successfulLogs[0] || null;
   const latestQueuedLog = logs.find(isFollowUpQueued) || null;
   const completedCycles = Math.min(successfulLogs.length, 2);
+  const latestSuccessfulLogMs = latestSuccessfulLog?.sent_at ? new Date(latestSuccessfulLog.sent_at).valueOf() : 0;
+  const recentSuccess = Boolean(latestSuccessfulLogMs) && nowMs - latestSuccessfulLogMs <= FOLLOW_UP_SUCCESS_HIGHLIGHT_MS;
   let requiredCycles = 0;
   if (initialFollowUpDate && compareIsoDates(todayIsoDate, initialFollowUpDate) >= 0) {
     requiredCycles = 1;
@@ -164,7 +173,7 @@ function getFollowUpMeta(record, logs = []) {
 
   const due = hasReachableEmail && requiredCycles > completedCycles;
   const isQueued = Boolean(latestQueuedLog) && (!latestSuccessfulLog || latestSuccessfulLog === latestQueuedLog);
-  const isHealthy = hasReachableEmail && !due && !isQueued;
+  const isHealthy = hasReachableEmail && recentSuccess;
 
   let statusLabel = "Scheduled";
   let reason = initialFollowUpDate
@@ -176,6 +185,11 @@ function getFollowUpMeta(record, logs = []) {
   } else if (latestLog && !isFollowUpSuccessful(latestLog)) {
     reason = `Last follow-up attempt failed on ${formatDate(latestLog.sent_at)}.`;
     statusLabel = "Retry needed";
+  } else if (recentSuccess) {
+    reason = nextFollowUpDate
+      ? `Follow-up was sent recently. Next follow-up is ${formatDate(nextFollowUpDate)}.`
+      : `Follow-up was sent recently on ${formatDate(latestSuccessfulLog?.sent_at)}.`;
+    statusLabel = "Just sent";
   } else if (isQueued) {
     reason = `Follow-up request is queued from ${formatDate(latestQueuedLog?.sent_at)}.`;
     statusLabel = "Queued";
@@ -201,6 +215,7 @@ function getFollowUpMeta(record, logs = []) {
     isQueued,
     hasReachableEmail,
     isHealthy,
+    recentSuccess,
     latestLog,
     latestSuccessfulLog,
     nextFollowUpDate,
@@ -226,6 +241,15 @@ export default function EnquiriesPage() {
   const [dropoutId, setDropoutId] = useState("");
   const [selectedFollowUpId, setSelectedFollowUpId] = useState("");
   const [nameFilter, setNameFilter] = useState("");
+  const [statusClockMs, setStatusClockMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setStatusClockMs(Date.now());
+    }, 60 * 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   const followUpLogsByEnrollment = useMemo(() => {
     const grouped = new Map();
@@ -263,7 +287,7 @@ export default function EnquiriesPage() {
 
   const selectedFollowUpRecord = enquiries.find((record) => record.enrollment.id === selectedFollowUpId) || null;
   const selectedFollowUpMeta = selectedFollowUpRecord
-    ? getFollowUpMeta(selectedFollowUpRecord, followUpLogsByEnrollment.get(selectedFollowUpRecord.enrollment.id) || [])
+    ? getFollowUpMeta(selectedFollowUpRecord, followUpLogsByEnrollment.get(selectedFollowUpRecord.enrollment.id) || [], statusClockMs)
     : null;
 
   const handleCsvUpload = async (event) => {
@@ -386,7 +410,7 @@ export default function EnquiriesPage() {
               const tone = getStudentTone(record.student);
               const initials = buildInitials(record.student.full_name);
               const followUpLogs = followUpLogsByEnrollment.get(record.enrollment.id) || [];
-              const followUpMeta = getFollowUpMeta(record, followUpLogs);
+              const followUpMeta = getFollowUpMeta(record, followUpLogs, statusClockMs);
 
               return (
                 <>
@@ -408,7 +432,7 @@ export default function EnquiriesPage() {
                       </div>
                       <div className="rounded-xl bg-slate-50 p-2">
                         <p className="text-[12px] text-slate-500">Next follow-up</p>
-                        <p className="mt-0.5 font-semibold text-slate-900">{formatDate(record.enrollment.follow_up_date)}</p>
+                        <p className="mt-0.5 font-semibold text-slate-900">{formatDate(followUpMeta.nextFollowUpDate)}</p>
                       </div>
                       <div className="rounded-xl bg-slate-50 p-2">
                         <p className="text-[12px] text-slate-500">I am a</p>
@@ -427,17 +451,15 @@ export default function EnquiriesPage() {
                       <button
                         type="button"
                         className={`status-pill flex items-center gap-2 ${
-                          followUpMeta.due
-                            ? "border-rose-200 bg-rose-50 text-rose-600"
-                            : followUpMeta.isQueued
-                              ? "border-amber-200 bg-amber-50 text-amber-700"
-                            : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                          followUpMeta.recentSuccess
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                            : "border-rose-200 bg-rose-50 text-rose-600"
                         }`}
                         onClick={() => setSelectedFollowUpId(record.enrollment.id)}
                       >
                         <span
                           className={`inline-flex h-2.5 w-2.5 rounded-full animate-pulse ${
-                            followUpMeta.due ? "bg-red-500" : followUpMeta.isQueued ? "bg-amber-500" : "bg-emerald-500"
+                            followUpMeta.recentSuccess ? "bg-emerald-500" : "bg-red-500"
                           }`}
                           aria-hidden="true"
                         />
@@ -472,7 +494,7 @@ export default function EnquiriesPage() {
                   <div className="mt-2.5 flex flex-wrap gap-4 border-t border-slate-100 pt-2.5 text-[10px] uppercase tracking-[0.18em] text-slate-400">
                     <span>{record.student.place}</span>
                     <span>{record.student.phone}</span>
-                    <span>{formatShortDate(record.enrollment.follow_up_date)}</span>
+                    <span>{formatShortDate(followUpMeta.nextFollowUpDate)}</span>
                   </div>
                 </>
               );
@@ -505,7 +527,7 @@ export default function EnquiriesPage() {
               <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-4">
                 <div className="flex items-center gap-2">
                   <span
-                    className={`inline-flex h-3 w-3 rounded-full animate-pulse ${selectedFollowUpMeta?.isHealthy ? "bg-emerald-500" : "bg-red-500"}`}
+                    className={`inline-flex h-3 w-3 rounded-full animate-pulse ${selectedFollowUpMeta?.recentSuccess ? "bg-emerald-500" : "bg-red-500"}`}
                     aria-hidden="true"
                   />
                   <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Mail status</p>

@@ -96,6 +96,115 @@ function extractAutomationErrorDetails(data) {
   return String(message).trim();
 }
 
+function isPlainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function appendFormValue(formData, key, value) {
+  if (value === null || value === undefined) {
+    formData.append(key, "");
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => {
+      appendFormValue(formData, `${key}[${index}]`, item);
+    });
+    return;
+  }
+
+  if (isPlainObject(value)) {
+    Object.entries(value).forEach(([childKey, childValue]) => {
+      appendFormValue(formData, `${key}[${childKey}]`, childValue);
+    });
+    return;
+  }
+
+  formData.append(key, String(value));
+}
+
+function appendJsonPart(formData, key, value) {
+  formData.append(
+    key,
+    new Blob([JSON.stringify(value)], { type: "application/json" }),
+    `${key}.json`,
+  );
+}
+
+function base64ToBlob(base64 = "", mimeType = "application/octet-stream") {
+  const binary = window.atob(String(base64 || ""));
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return new Blob([bytes], { type: mimeType });
+}
+
+function buildAutomationRequestBody(flowName, payload, overrides = {}) {
+  const { event, agentType, actionType } = resolveAutomationDefinition(flowName, overrides);
+  return {
+    event,
+    agentType,
+    actionType,
+    flowName,
+    source: "EnrollEase AI",
+    timestamp: new Date().toISOString(),
+    payload,
+  };
+}
+
+function buildAutomationRequestInit(requestBody, webhookSecret = "") {
+  const baseHeaders = {
+    "x-enrollease-event": requestBody.event,
+    "x-enrollease-agent": requestBody.agentType,
+    "x-enrollease-action": requestBody.actionType,
+    ...(webhookSecret ? { "x-enrollease-secret": webhookSecret } : {}),
+  };
+  const attachments = Array.isArray(requestBody.payload?.attachments) ? requestBody.payload.attachments : [];
+
+  if (!attachments.length) {
+    return {
+      headers: {
+        "Content-Type": "application/json",
+        ...baseHeaders,
+      },
+      body: JSON.stringify(requestBody),
+    };
+  }
+
+  const formData = new FormData();
+  appendJsonPart(formData, "request", requestBody);
+  appendFormValue(formData, "event", requestBody.event);
+  appendFormValue(formData, "agentType", requestBody.agentType);
+  appendFormValue(formData, "actionType", requestBody.actionType);
+  appendFormValue(formData, "flowName", requestBody.flowName);
+  appendFormValue(formData, "source", requestBody.source);
+  appendFormValue(formData, "timestamp", requestBody.timestamp);
+
+  appendFormValue(formData, "recipientEmail", requestBody.payload?.recipientEmail || "");
+  appendFormValue(formData, "subject", requestBody.payload?.subject || "");
+  appendFormValue(formData, "html", requestBody.payload?.html || "");
+  appendFormValue(formData, "text", requestBody.payload?.text || "");
+  appendFormValue(formData, "htmlMessage", requestBody.payload?.htmlMessage || "");
+  appendFormValue(formData, "textMessage", requestBody.payload?.textMessage || "");
+  appendFormValue(formData, "message", requestBody.payload?.message || "");
+  appendFormValue(formData, "payloadJson", JSON.stringify(requestBody.payload || {}));
+
+  attachments.forEach((attachment, index) => {
+    if (!attachment?.contentBase64) return;
+    const fieldName = attachment.fieldName || (index === 0 ? "student_profile_pdf" : `attachment_${index + 1}`);
+    const blob = base64ToBlob(attachment.contentBase64, attachment.mimeType || attachment.contentType || "application/pdf");
+    formData.append(fieldName, blob, attachment.fileName || `${fieldName}.pdf`);
+  });
+
+  return {
+    headers: baseHeaders,
+    body: formData,
+  };
+}
+
 async function readResponseBody(response) {
   const contentType = response.headers.get("content-type") || "";
 
@@ -108,16 +217,8 @@ async function readResponseBody(response) {
 }
 
 export async function triggerAutomation(flowName, payload, overrides = {}) {
-  const { event, agentType, actionType } = resolveAutomationDefinition(flowName, overrides);
-  const requestBody = {
-    event,
-    agentType,
-    actionType,
-    flowName,
-    source: "EnrollEase AI",
-    timestamp: new Date().toISOString(),
-    payload,
-  };
+  const requestBody = buildAutomationRequestBody(flowName, payload, overrides);
+  const { event, agentType, actionType } = requestBody;
 
   if (!webhookUrl) {
       return {
@@ -151,16 +252,11 @@ export async function triggerAutomation(flowName, payload, overrides = {}) {
   try {
     for (const targetUrl of webhookTargets) {
       console.log("Sending n8n event:", event, payload);
+      const requestInit = buildAutomationRequestInit(requestBody, webhookSecret);
       const response = await fetch(targetUrl, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-enrollease-event": event,
-          "x-enrollease-agent": agentType,
-          "x-enrollease-action": actionType,
-          ...(webhookSecret ? { "x-enrollease-secret": webhookSecret } : {}),
-        },
-        body: JSON.stringify(requestBody),
+        headers: requestInit.headers,
+        body: requestInit.body,
         signal: controller.signal,
       });
       const data = await readResponseBody(response);

@@ -15,6 +15,7 @@ import {
 import { getEnrollmentTimelineValidationMessage, getTodayIsoDate } from "../utils/enrollmentDateValidation";
 import { formatCurrency } from "../utils/formatters";
 import { resolveNextDueDate } from "../utils/paymentHelpers";
+import { getNextEnrolledStudentCode } from "../utils/studentCode";
 
 const currentActivityOptions = ["Student", "Working"];
 const allowedImageExtensions = [".png", ".jpg", ".jpeg"];
@@ -323,7 +324,7 @@ export default function EnrollmentForm({
 }) {
   const navigate = useNavigate();
   const formIdPrefix = useId().replace(/:/g, "");
-  const { courses, createEnrollment, convertEnquiryToEnrollment, students, portalRecords } = useApp();
+  const { courses, createEnrollment, convertEnquiryToEnrollment, students, portalRecords, enrollments } = useApp();
   const courseOptions = getCourseFormOptions(courses);
   const convertRecord = useMemo(
     () => portalRecords.find((record) => record.enrollment.id === convertEnrollmentId || record.id === convertEnrollmentId) || null,
@@ -363,6 +364,10 @@ export default function EnrollmentForm({
 
     return map;
   }, [portalRecords]);
+  const nextEnrolledStudentCode = useMemo(
+    () => getNextEnrolledStudentCode({ students, enrollments }),
+    [enrollments, students],
+  );
 
   const studentSuggestions = useMemo(
     () => ({
@@ -402,7 +407,10 @@ export default function EnrollmentForm({
   useEffect(() => {
     if (!isConvertMode) return;
 
-    setForm(buildConvertForm(convertRecord));
+    setForm({
+      ...buildConvertForm(convertRecord),
+      student_code: convertRecord?.student?.student_code || nextEnrolledStudentCode,
+    });
     setPhotoPreview(convertRecord.student.photo_url || findDocumentPreview(convertRecord, "Student Photo") || "");
     setAadhaarPreview(convertRecord.student.aadhaar_document_url || findDocumentPreview(convertRecord, "Aadhaar ID Photo") || "");
     setPhotoDocument(null);
@@ -411,7 +419,7 @@ export default function EnrollmentForm({
     setAadhaarVerificationNotice(null);
     setDuplicateCandidate(null);
     setSubmitError("");
-  }, [convertRecord, isConvertMode]);
+  }, [convertRecord, isConvertMode, nextEnrolledStudentCode]);
 
   useEffect(() => {
     if (convertEnrollmentId || isConvertMode) return;

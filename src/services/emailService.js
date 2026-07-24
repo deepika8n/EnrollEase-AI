@@ -1,4 +1,5 @@
 import { triggerAutomation } from "./automationService";
+import { generateEnrollmentPdfBlob } from "./pdfServiceFixed";
 import { toIsoDate } from "../utils/dateMath";
 import { inferPaymentPlan, isEmiPlan, resolveRemainingAmount, toNumberOrNull } from "../utils/paymentHelpers";
 
@@ -13,6 +14,57 @@ function escapeHtml(value = "") {
 
 function normalizeEmailAddress(value = "") {
   return String(value || "").trim().toLowerCase();
+}
+
+function slugifyFileSegment(value = "", fallback = "student-profile") {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return normalized || fallback;
+}
+
+function shouldAttachStudentProfilePdf(emailType = "", options = {}) {
+  if (typeof options.attachProfilePdf === "boolean") {
+    return options.attachProfilePdf;
+  }
+
+  const normalizedType = String(emailType || "").trim().toLowerCase();
+  return normalizedType === "student profile update" || normalizedType === "profile send mail";
+}
+
+async function blobToBase64(blob) {
+  const buffer = await blob.arrayBuffer();
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    const chunk = bytes.subarray(index, index + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+
+  return window.btoa(binary);
+}
+
+async function buildStudentProfilePdfAttachment({ student, course, enrollment, documents = [], instituteName = "CERTISURED" }) {
+  const pdfBlob = await generateEnrollmentPdfBlob({
+    instituteName,
+    student,
+    course,
+    enrollment,
+    documents,
+  });
+
+  return {
+    fieldName: "student_profile_pdf",
+    fileName: `${slugifyFileSegment(student?.full_name, "student-profile")}-profile.pdf`,
+    mimeType: "application/pdf",
+    contentBase64: await blobToBase64(pdfBlob),
+    contentType: "application/pdf",
+    encoding: "base64",
+  };
 }
 
 function buildCertisuredHeader({ title, subtitle = "" }) {
@@ -323,6 +375,7 @@ function buildEmailAutomationPayload({
   course,
   currentStage,
   metadata = {},
+  attachments = [],
 }) {
   const coursePayload = buildCoursePayload(course);
 
@@ -351,6 +404,11 @@ function buildEmailAutomationPayload({
     course: coursePayload,
     enrollment,
     metadata,
+    attachments,
+    hasAttachments: attachments.length > 0,
+    attachmentCount: attachments.length,
+    attachment: attachments[0] || null,
+    profilePdfAttachment: attachments[0] || null,
   };
 }
 
@@ -509,6 +567,15 @@ CERTISURED`;
 export async function sendEmailTrigger(emailType, enrollment, options = {}) {
   const student = options.student || {};
   const genericConfig = resolveGenericEmailConfig(emailType, enrollment, options);
+  const attachments = shouldAttachStudentProfilePdf(emailType, options)
+    ? [await buildStudentProfilePdfAttachment({
+      student,
+      course: options.course || enrollment?.course_name || "",
+      enrollment,
+      documents: options.documents || [],
+      instituteName: options.instituteName || "CERTISURED",
+    })]
+    : [];
   const automationPayload = {
     ...buildEmailAutomationPayload({
       agentType: genericConfig.agentType,
@@ -522,6 +589,7 @@ export async function sendEmailTrigger(emailType, enrollment, options = {}) {
       student,
       course: options.course || enrollment.course_name || "",
       currentStage: options.currentStage || enrollment.pipeline_stage || "",
+      attachments,
     }),
     student: {
       id: student?.id || "",

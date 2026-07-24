@@ -26,6 +26,12 @@ function getCourseFee(record) {
   return toNumberOrNull(record.enrollment.total_fee) ?? toNumberOrNull(record.course?.fee);
 }
 
+function getEnrollmentSortTime(record) {
+  const primaryDate = record.enrollment.enrolled_date || record.enrollment.created_at || record.enrollment.lead_date;
+  const parsedTime = Date.parse(primaryDate || "");
+  return Number.isNaN(parsedTime) ? 0 : parsedTime;
+}
+
 export default function RecordsPage() {
   const { portalRecords, deleteStudentRecord } = useApp();
   const navigate = useNavigate();
@@ -38,7 +44,10 @@ export default function RecordsPage() {
   });
 
   const enrolledRecords = useMemo(
-    () => portalRecords.filter((record) => record.isEnrolledRecord),
+    () =>
+      portalRecords
+        .filter((record) => record.isEnrolledRecord)
+        .sort((left, right) => getEnrollmentSortTime(right) - getEnrollmentSortTime(left)),
     [portalRecords],
   );
 
