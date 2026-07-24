@@ -32,10 +32,12 @@
 
   html {
     scroll-behavior: smooth;
+    overflow-x: hidden;
   }
 
   body {
     @apply min-h-screen bg-canvas bg-mesh font-body text-brand-500 antialiased;
+    overflow-x: hidden;
   }
 
   a {
@@ -244,6 +246,15 @@
 
   .sidebar-scrollbar::-webkit-scrollbar-thumb:hover {
     background-color: rgba(255, 255, 255, 0.35);
+  }
+
+  .hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
   }
 
   .admin-welcome-screen {
