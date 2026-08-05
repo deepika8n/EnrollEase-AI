@@ -2,6 +2,14 @@ import { hasSupabaseEnv, supabase, supabaseAnonKey, supabaseUrl } from "../lib/s
 
 const STUDENT_INTAKE_FUNCTION_NAME = "student-intake";
 const configuredPublicAppUrl = String(import.meta.env.VITE_PUBLIC_APP_URL || "").trim();
+const LEGACY_PUBLIC_APP_ORIGINS = new Map([
+  ["https://enrollease-ai.vercel.app", "https://enroll-ease-ai.vercel.app"],
+]);
+
+function normalizePublicAppOrigin(origin = "") {
+  const trimmedOrigin = String(origin || "").trim().replace(/\/+$/, "");
+  return LEGACY_PUBLIC_APP_ORIGINS.get(trimmedOrigin) || trimmedOrigin;
+}
 
 function getFunctionBaseUrl() {
   const normalizedUrl = String(supabaseUrl || "").trim().replace(/\/+$/, "");
@@ -71,7 +79,7 @@ export async function hashStudentIntakeToken(token = "") {
 
 export function buildStudentIntakeUrl({ enrollmentId, token, origin = "" }) {
   const preferredOrigin = String(origin || configuredPublicAppUrl || window.location.origin).trim();
-  const safeOrigin = preferredOrigin.replace(/\/+$/, "");
+  const safeOrigin = normalizePublicAppOrigin(preferredOrigin);
   const params = new URLSearchParams({ token: String(token || "") });
   return `${safeOrigin}/student-intake/${encodeURIComponent(enrollmentId)}?${params.toString()}`;
 }

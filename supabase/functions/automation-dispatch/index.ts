@@ -346,7 +346,11 @@ function resolvePublicAppOrigin() {
     || Deno.env.get("VITE_PUBLIC_APP_URL")
     || "",
   ).trim();
-  return configuredOrigin.replace(/\/+$/, "");
+  const trimmedOrigin = configuredOrigin.replace(/\/+$/, "");
+  if (trimmedOrigin === "https://enrollease-ai.vercel.app") {
+    return "https://enroll-ease-ai.vercel.app";
+  }
+  return trimmedOrigin;
 }
 
 function buildStudentIntakeUrl(origin = "", enrollmentId = "", token = "") {
