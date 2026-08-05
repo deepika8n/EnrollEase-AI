@@ -2,7 +2,8 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import { createDemoPortalState } from "../data/demoPortal";
 import { canonicalCourseSeeds, decorateCourseRecord, findCourseByReference } from "../data/courseCatalog";
 import { hasSupabaseEnv, supabase, supabaseUrl } from "../lib/supabase";
-import { sendAdmissionFollowUpEmail, sendEmailTrigger, sendPaymentStatusEmail } from "../services/emailService";
+import { buildStudentIntakeInviteEmail, sendAdmissionFollowUpEmail, sendEmailTrigger, sendPaymentStatusEmail } from "../services/emailService";
+import { buildStudentIntakeUrl, createStudentIntakeToken, hashStudentIntakeToken } from "../services/studentIntakeService";
 import { triggerAutomation } from "../services/automationService";
 import { uploadEnrollmentDocument } from "../services/enrollmentService";
 import { addDays, toIsoDate } from "../utils/dateMath";
@@ -30,14 +31,18 @@ import {
   resolveRemainingAmount,
   toNumberOrNull,
 } from "../utils/paymentHelpers";
-import { getNextEnrolledStudentCode } from "../utils/studentCode";
+import { getNextEnrolledStudentCode, getNextStudentCode } from "../utils/studentCode";
 
-const LOCAL_DB_KEY = "enrollease-demo-db-v2";
-const LOCAL_SESSION_KEY = "enrollease-demo-session-v2";
-const SUPABASE_SHADOW_KEY = "enrollease-supabase-shadow-v1";
-const REMOTE_STATE_CACHE_KEY = "enrollease-remote-state-v2";
+const LOCAL_DB_KEY = "enrollease-demo-db-v3";
+const LOCAL_SESSION_KEY = "enrollease-demo-session-v3";
+const SUPABASE_SHADOW_KEY = "enrollease-supabase-shadow-v2";
+const REMOTE_STATE_CACHE_KEY = "enrollease-remote-state-v3";
 const LEGACY_BROWSER_CACHE_KEYS = [
   "enrollease-remote-state-v1",
+  "enrollease-remote-state-v2",
+  "enrollease-supabase-shadow-v1",
+  "enrollease-demo-db-v2",
+  "enrollease-demo-session-v2",
 ];
 const REMOTE_CACHE_MAX_STUDENTS = 250;
 const REMOTE_CACHE_MAX_ENROLLMENTS = 250;
@@ -54,24 +59,36 @@ const CRITICAL_REMOTE_TIMEOUT_MS = 2000;
 const DEFERRED_REMOTE_TIMEOUT_MS = 30000;
 const SERVER_SIDE_AUTOMATIONS_ENABLED = String(import.meta.env.VITE_SERVER_SIDE_AUTOMATIONS || "").trim().toLowerCase() === "true";
 const criticalPortalTables = [
-  { key: "profiles", table: "profiles", queryBuilder: (query) => query.select("*") },
-  { key: "courses", table: "courses", queryBuilder: (query) => query.select("*").order("course_name", { ascending: true }) },
+  {
+    key: "profiles",
+    table: "profiles",
+    queryBuilder: (query) => query.select("*"),
+  },
+  {
+    key: "courses",
+    table: "courses",
+    queryBuilder: (query) => query.select("*").order("course_name", { ascending: true }),
+    fallbackQueryBuilder: (query) => query.select("*"),
+  },
 ];
 const deferredPortalTables = [
   {
     key: "students",
     table: "students",
     queryBuilder: (query) => query.select("*").order("created_at", { ascending: false }),
+    fallbackQueryBuilder: (query) => query.select("*"),
   },
   {
     key: "enrollments",
     table: "enrollments",
     queryBuilder: (query) => query.select("*").order("created_at", { ascending: false }),
+    fallbackQueryBuilder: (query) => query.select("*"),
   },
   {
     key: "documents",
     table: "documents",
     queryBuilder: (query) => query.select("*").order("uploaded_at", { ascending: false }),
+    fallbackQueryBuilder: (query) => query.select("*"),
   },
 ];
 const optionalPortalTables = [
@@ -79,16 +96,24 @@ const optionalPortalTables = [
     key: "emailLogs",
     table: "email_logs",
     queryBuilder: (query) => query.select("*").order("sent_at", { ascending: false }),
+    fallbackQueryBuilder: (query) => query.select("*"),
   },
   {
     key: "auditLogs",
     table: "audit_logs",
     queryBuilder: (query) => query.select("*").order("created_at", { ascending: false }),
+    fallbackQueryBuilder: (query) => query.select("*"),
   },
 ];
 const criticalSchemaColumnsByTable = {
   students: new Set([]),
-  enrollments: new Set([]),
+  enrollments: new Set([
+    "student_form_status",
+    "student_form_token_hash",
+    "student_form_sent_at",
+    "student_form_expires_at",
+    "student_form_submitted_at",
+  ]),
 };
 const GIRL_NAME_PREFIXES = [
   "priya",
@@ -142,9 +167,10 @@ const BOY_NAME_PREFIXES = [
   "yash",
 ];
 const AUTO_DROPOUT_REASONS = new Set([
-  "Automatically moved to dropout after two follow-up cycles.",
+  "Automatically moved to dropout after 7 days without enrollment.",
   "Automatically moved to dropout after the follow-up date passed.",
 ]);
+const ENROLLMENT_DOCUMENT_TYPES = new Set(["Student Photo", "Aadhaar ID Photo"]);
 
 const defaultState = {
   currentUser: null,
@@ -797,6 +823,59 @@ function titleCaseImportValue(value = "") {
     .join(" ");
 }
 
+function normalizeStudentCodeValue(value = "") {
+  return String(value || "").trim().toUpperCase();
+}
+
+function buildStudentCodeSet(students = [], excludeStudentId = "") {
+  return new Set(
+    students
+      .filter((student) => !excludeStudentId || student?.id !== excludeStudentId)
+      .map((student) => normalizeStudentCodeValue(student?.student_code || ""))
+      .filter(Boolean),
+  );
+}
+
+function buildUniqueStudentCode(preferredCode = "", existingCodes = [], { generateIfBlank = false } = {}) {
+  const normalizedPreferredCode = normalizeStudentCodeValue(preferredCode);
+  const normalizedExistingCodes = Array.from(new Set(
+    (existingCodes || [])
+      .map((code) => normalizeStudentCodeValue(code))
+      .filter(Boolean),
+  ));
+  const existingCodeSet = new Set(normalizedExistingCodes);
+
+  if (!normalizedPreferredCode) {
+    return generateIfBlank ? getNextStudentCode(normalizedExistingCodes) : "";
+  }
+
+  if (!existingCodeSet.has(normalizedPreferredCode)) {
+    return normalizedPreferredCode;
+  }
+
+  const numericSuffixMatch = normalizedPreferredCode.match(/^(.*?)(\d+)$/);
+  if (numericSuffixMatch) {
+    const [, prefix, numericPart] = numericSuffixMatch;
+    let numericValue = Number.parseInt(numericPart, 10);
+    do {
+      numericValue += 1;
+      const nextCode = `${prefix}${String(numericValue).padStart(numericPart.length, "0")}`;
+      if (!existingCodeSet.has(nextCode)) {
+        return nextCode;
+      }
+    } while (true);
+  }
+
+  let duplicateIndex = 2;
+  while (true) {
+    const nextCode = `${normalizedPreferredCode}-${duplicateIndex}`;
+    if (!existingCodeSet.has(nextCode)) {
+      return nextCode;
+    }
+    duplicateIndex += 1;
+  }
+}
+
 function getCsvImportValue(normalizedRowEntries, fieldName) {
   const aliases = normalizedCsvImportAliasEntries.find(([name]) => name === fieldName)?.[1] || [];
   for (const alias of aliases) {
@@ -822,6 +901,34 @@ function buildImportedStudentName({ fullName, email, phone, rowIndex }) {
 
 function buildImportedPlaceholderEmail(rowIndex) {
   return `imported-student-${Date.now()}-${rowIndex + 1}@enrollease.local`;
+}
+
+function resolveImportedEnrollmentTiming(row = {}) {
+  const stage = row.pipeline_stage || (row.enrolled_date ? "Enrolled" : "Enquiry");
+  const initialLeadDate = toIsoDate(row.lead_date || new Date());
+  const initialFollowUpDate = toIsoDate(row.follow_up_date || "") || getInitialEnquiryFollowUpDate(initialLeadDate);
+
+  if (
+    stage === "Enquiry"
+    && shouldAutoDropoutEnquiry({
+      pipelineStage: "Enquiry",
+      leadDate: initialLeadDate,
+      followUpDate: initialFollowUpDate,
+    })
+  ) {
+    const refreshedLeadDate = getTodayIsoDate();
+    return {
+      stage,
+      leadDate: refreshedLeadDate,
+      followUpDate: getInitialEnquiryFollowUpDate(refreshedLeadDate),
+    };
+  }
+
+  return {
+    stage,
+    leadDate: initialLeadDate,
+    followUpDate: initialFollowUpDate,
+  };
 }
 
 function normalizeImportedCsvRow(row, rowIndex) {
@@ -987,6 +1094,15 @@ function hasAdmissionLifecycleData(enrollment = {}, pipelineStage = enrollment?.
     || toIsoDate(enrollment?.last_payment_date || "")
     || toIsoDate(enrollment?.next_due_date || ""),
   );
+}
+
+function isValidStudentEmailAddress(email = "") {
+  const safeEmail = String(email || "").trim().toLowerCase();
+  if (!safeEmail || safeEmail.endsWith("@enrollease.local")) {
+    return false;
+  }
+
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(safeEmail);
 }
 
 function extractGenderNameTokens(student = {}) {
@@ -1338,7 +1454,7 @@ function normalizeEnrollmentForDisplay(enrollment, course) {
     dropout_date: pipelineStage === "Dropout" ? dropoutDate : "",
     dropout_reason:
       pipelineStage === "Dropout"
-        ? (enrollment?.dropout_reason || "Automatically moved to dropout after two follow-up cycles.")
+        ? (enrollment?.dropout_reason || "Automatically moved to dropout after 7 days without enrollment.")
         : (enrollment?.dropout_reason || ""),
     last_payment_date: lastPaymentDate,
     payment_history: paymentHistory,
@@ -1420,8 +1536,12 @@ function normalizeDocumentRecord(document, enrollment) {
   };
 }
 
+function isSupportedEnrollmentDocumentType(documentType = "") {
+  return ENROLLMENT_DOCUMENT_TYPES.has(String(documentType || "").trim());
+}
+
 function buildDocumentBundle(student, enrollmentId, documents = []) {
-  const bundledDocuments = [...documents];
+  const bundledDocuments = documents.filter((item) => isSupportedEnrollmentDocumentType(item?.document_type));
 
   if (!bundledDocuments.some((item) => item.document_type === "Student Photo") && student?.photo_url) {
     bundledDocuments.push({
@@ -1451,7 +1571,9 @@ function buildDocumentBundle(student, enrollmentId, documents = []) {
 }
 
 function normalizeDocumentsForDisplay(documents = [], enrollments = []) {
-  return documents.map((document) =>
+  return documents
+    .filter((document) => isSupportedEnrollmentDocumentType(document?.document_type))
+    .map((document) =>
     normalizeDocumentRecord(
       document,
       enrollments.find((item) => item.id === document.enrollment_id),
@@ -1550,11 +1672,22 @@ function toPortalRecords(students, enrollments, courses, documents) {
 }
 
 function buildDashboardMetrics(records) {
+  const getStudentMetricKey = (record) => (
+    record.student?.id
+    || String(record.student?.full_name || "").trim().toLowerCase()
+    || record.enrollment?.id
+    || record.id
+  );
   const totalRecords = records.length;
   const pending = records.filter((record) => record.isEnquiryRecord).length;
   const totalEnquiries = new Set(records.map((record) => record.student?.id).filter(Boolean)).size;
   const totalEnrolled = records.filter((record) => record.isEnrolledRecord).length;
-  const totalDropouts = records.filter((record) => record.isDropoutRecord).length;
+  const totalDropouts = new Set(
+    records
+      .filter((record) => record.isDropoutRecord)
+      .map((record) => getStudentMetricKey(record))
+      .filter(Boolean),
+  ).size;
   const conversionRate = totalEnquiries ? Math.round((totalEnrolled / totalEnquiries) * 100) : 0;
   const emiStudents = records.filter((record) => isEmiEnrollment(record.enrollment) && record.paymentEligible).length;
   const clearedPayments = records.filter((record) => record.enrollment.payment_status === "Paid").length;
@@ -1605,12 +1738,26 @@ function formatEnrollmentAccessError(error, operation, tableName) {
 
 function getMissingSchemaColumn(error, tableName) {
   const message = String(error?.message || "");
-  const match = message.match(/Could not find the '([^']+)' column of '([^']+)' in the schema cache/i);
-  if (!match) return "";
+  const schemaCacheMatch = message.match(/Could not find the '([^']+)' column of '([^']+)' in the schema cache/i);
+  if (schemaCacheMatch) {
+    const [, columnName, failedTableName] = schemaCacheMatch;
+    if (tableName && failedTableName !== tableName) return "";
+    return columnName;
+  }
 
-  const [, columnName, failedTableName] = match;
-  if (tableName && failedTableName !== tableName) return "";
-  return columnName;
+  const relationColumnMatch = message.match(/column\s+([a-z0-9_]+)\.([a-z0-9_]+)\s+does not exist/i);
+  if (relationColumnMatch) {
+    const [, failedTableName, columnName] = relationColumnMatch;
+    if (tableName && failedTableName !== tableName) return "";
+    return columnName;
+  }
+
+  const bareColumnMatch = message.match(/column\s+"?([a-z0-9_]+)"?\s+does not exist/i);
+  if (bareColumnMatch) {
+    return bareColumnMatch[1];
+  }
+
+  return "";
 }
 
 function removeColumnFromPayload(payload, columnName) {
@@ -1694,6 +1841,25 @@ function fetchTableWithTimeout(table, queryBuilder, label, milliseconds = SUPABA
   return withTimeout(fetchTable(table, queryBuilder), milliseconds, label);
 }
 
+async function fetchTableWithSchemaFallback(
+  table,
+  queryBuilder,
+  fallbackQueryBuilder,
+  label,
+  milliseconds = SUPABASE_BOOT_TIMEOUT_MS,
+) {
+  try {
+    return await fetchTableWithTimeout(table, queryBuilder, label, milliseconds);
+  } catch (error) {
+    if (!fallbackQueryBuilder || !getMissingSchemaColumn(error, table)) {
+      throw error;
+    }
+
+    console.warn(`Retrying ${table} without schema-sensitive ordering after a missing-column error.`, error);
+    return fetchTableWithTimeout(table, fallbackQueryBuilder, `${label} (fallback)`, milliseconds);
+  }
+}
+
 function buildOptionalState(optionalState = {}) {
   return {
     emailLogs: Array.isArray(optionalState.emailLogs) ? optionalState.emailLogs : [],
@@ -1703,9 +1869,15 @@ function buildOptionalState(optionalState = {}) {
 
 async function loadCriticalRemoteState(sessionUser) {
   const criticalResults = await Promise.all(
-    criticalPortalTables.map(async ({ key, table, queryBuilder }) => [
+    criticalPortalTables.map(async ({ key, table, queryBuilder, fallbackQueryBuilder }) => [
       key,
-      await fetchTableWithTimeout(table, queryBuilder, `Loading ${table}`, CRITICAL_REMOTE_TIMEOUT_MS),
+      await fetchTableWithSchemaFallback(
+        table,
+        queryBuilder,
+        fallbackQueryBuilder,
+        `Loading ${table}`,
+        CRITICAL_REMOTE_TIMEOUT_MS,
+      ),
     ]),
   );
   const {
@@ -1731,9 +1903,18 @@ async function loadCriticalRemoteState(sessionUser) {
 
 async function loadDeferredRemoteState() {
   const deferredResults = await Promise.all(
-    deferredPortalTables.map(async ({ key, table, queryBuilder }) => {
+    deferredPortalTables.map(async ({ key, table, queryBuilder, fallbackQueryBuilder }) => {
       try {
-        return [key, await fetchTableWithTimeout(table, queryBuilder, `Loading ${table}`, DEFERRED_REMOTE_TIMEOUT_MS)];
+        return [
+          key,
+          await fetchTableWithSchemaFallback(
+            table,
+            queryBuilder,
+            fallbackQueryBuilder,
+            `Loading ${table}`,
+            DEFERRED_REMOTE_TIMEOUT_MS,
+          ),
+        ];
       } catch (error) {
         console.warn(`Deferred Supabase load failed for ${table}:`, error);
         return [key, []];
@@ -1741,9 +1922,18 @@ async function loadDeferredRemoteState() {
     }),
   );
   const optionalResults = await Promise.all(
-    optionalPortalTables.map(async ({ key, table, queryBuilder }) => {
+    optionalPortalTables.map(async ({ key, table, queryBuilder, fallbackQueryBuilder }) => {
       try {
-        return [key, await fetchTableWithTimeout(table, queryBuilder, `Loading ${table}`, DEFERRED_REMOTE_TIMEOUT_MS)];
+        return [
+          key,
+          await fetchTableWithSchemaFallback(
+            table,
+            queryBuilder,
+            fallbackQueryBuilder,
+            `Loading ${table}`,
+            DEFERRED_REMOTE_TIMEOUT_MS,
+          ),
+        ];
       } catch (error) {
         console.warn(`Optional Supabase load failed for ${table}:`, error);
         return [key, []];
@@ -1870,6 +2060,32 @@ export function AppProvider({ children }) {
     fetchTable("courses", (query) => query.select("*").order("course_name", { ascending: true }))
   );
 
+  const fetchRemoteStudents = async () => (
+    fetchTable("students", (query) => query.select("id, student_code, email"))
+  );
+
+  const resolveUniqueStudentCodeForWrite = async ({
+    preferredCode = "",
+    generateIfBlank = false,
+    excludeStudentId = "",
+    existingStudents = null,
+    reservedCodes = [],
+  } = {}) => {
+    const studentsForLookup = Array.isArray(existingStudents)
+      ? existingStudents
+      : (hasSupabaseEnv && supabase ? await fetchRemoteStudents() : state.students);
+    const existingCodeSet = buildStudentCodeSet(studentsForLookup, excludeStudentId);
+
+    (reservedCodes || []).forEach((code) => {
+      const normalizedCode = normalizeStudentCodeValue(code);
+      if (normalizedCode) {
+        existingCodeSet.add(normalizedCode);
+      }
+    });
+
+    return buildUniqueStudentCode(preferredCode, [...existingCodeSet], { generateIfBlank });
+  };
+
   const seedCanonicalCourses = async () => {
     const existingCourses = await fetchRemoteCourses();
 
@@ -1931,7 +2147,8 @@ export function AppProvider({ children }) {
     );
   };
 
-  const refreshState = async (sessionUser) => {
+  const refreshState = async (sessionUser, options = {}) => {
+    const { forceRemote = false } = options;
     const refreshKey = sessionUser?.id || sessionUser?.email || "guest";
 
     if (refreshTracker.current.promise && refreshTracker.current.key === refreshKey) {
@@ -1952,22 +2169,38 @@ export function AppProvider({ children }) {
         setState((prev) => ({ ...defaultState, loading: false, notifications: prev.notifications }));
         return;
       }
-      const cachedState = readRemoteStateCache(sessionUser);
-      const hasUsableCache = Boolean(cachedState && hasRemotePortalContent(cachedState));
+      const cachedState = forceRemote ? null : readRemoteStateCache(sessionUser);
+      const hasUsableCache = !forceRemote && Boolean(cachedState && hasRemotePortalContent(cachedState));
 
       if (!hasUsableCache) {
         try {
           const fullRemoteState = await loadVerifiedRemoteState(sessionUser);
-          const nextState = {
+          setState((prev) => ({
+            ...prev,
+            ...(() => {
+              const nextState = {
+                ...fullRemoteState,
+                loading: false,
+              };
+
+              if (forceRemote && hasLinkedPortalRecords(prev.students, prev.enrollments) && !hasLinkedPortalRecords(nextState.students, nextState.enrollments)) {
+                return {
+                  ...nextState,
+                  students: prev.students,
+                  enrollments: prev.enrollments,
+                  documents: prev.documents,
+                };
+              }
+
+              return nextState;
+            })(),
+          }));
+          const cacheState = {
             ...fullRemoteState,
             loading: false,
           };
-          setState((prev) => ({
-            ...prev,
-            ...nextState,
-          }));
-          writeRemoteStateCache(sessionUser, nextState);
-          if (!hasMeaningfulPortalData(nextState)) {
+          writeRemoteStateCache(sessionUser, cacheState);
+          if (!hasMeaningfulPortalData(cacheState)) {
             pushNotification({
               type: "warning",
               title: `Supabase returned no student, enrollment, or document rows for this signed-in session on project ${getSupabaseProjectRef(supabaseUrl) || "unknown"}.`,
@@ -2333,12 +2566,17 @@ export function AppProvider({ children }) {
     } = buildLifecycleEnrollmentState(enrollment, toIsoDate(enrollment.lead_date || new Date()));
     const isEnquiryCreation = pipelineStage === "Enquiry";
     const successTitle = isEnquiryCreation ? "Enquiry saved successfully." : "Enrollment saved successfully.";
-    const resolvedStudentCode = isEnquiryCreation
-      ? student.student_code || ""
-      : student.student_code || getNextEnrolledStudentCode({
+    const fallbackStudentCode = isEnquiryCreation
+      ? ""
+      : getNextEnrolledStudentCode({
         students: state.students,
         enrollments: state.enrollments,
       });
+    const requestedStudentCode = student.student_code || fallbackStudentCode;
+    const resolvedStudentCode = await resolveUniqueStudentCodeForWrite({
+      preferredCode: requestedStudentCode,
+      generateIfBlank: !isEnquiryCreation,
+    });
 
     if (!hasSupabaseEnv || !supabase) {
       const studentId = createId("student");
@@ -2374,7 +2612,9 @@ export function AppProvider({ children }) {
       };
 
       commitLocalDb((draft) => {
-        const newDocuments = documents.map((item) => ({
+        const newDocuments = documents
+          .filter((item) => isSupportedEnrollmentDocumentType(item?.document_type))
+          .map((item) => ({
           id: createId("document"),
           enrollment_id: enrollmentId,
           document_type: item.document_type,
@@ -2382,7 +2622,7 @@ export function AppProvider({ children }) {
           verification_status: verificationStatus,
           remarks: item.remarks || "Uploaded from form",
           uploaded_at: leadDate,
-        }));
+          }));
 
         draft.students.unshift(studentRecord);
         draft.enrollments.unshift(enrollmentRecord);
@@ -2556,8 +2796,9 @@ export function AppProvider({ children }) {
       if (enrollmentError) throw formatEnrollmentAccessError(enrollmentError, "insert", "enrollments");
 
       let documentRecords = [];
-      if (documents.length) {
-        const payload = documents.map((item) => ({
+      const supportedDocuments = documents.filter((item) => isSupportedEnrollmentDocumentType(item?.document_type));
+      if (supportedDocuments.length) {
+        const payload = supportedDocuments.map((item) => ({
           enrollment_id: enrollmentRecord.id,
           document_type: item.document_type,
           file_url: item.file_url || "",
@@ -2664,9 +2905,14 @@ export function AppProvider({ children }) {
       },
       currentEnrollment.lead_date || currentEnrollment.created_at || toIsoDate(new Date()),
     );
-    const resolvedStudentCode = student.student_code || currentStudent.student_code || getNextEnrolledStudentCode({
+    const requestedStudentCode = student.student_code || currentStudent.student_code || getNextEnrolledStudentCode({
       students: state.students,
       enrollments: state.enrollments,
+    });
+    const resolvedStudentCode = await resolveUniqueStudentCodeForWrite({
+      preferredCode: requestedStudentCode,
+      generateIfBlank: true,
+      excludeStudentId: currentStudent.id,
     });
 
     if (!hasSupabaseEnv || !supabase) {
@@ -2698,7 +2944,9 @@ export function AppProvider({ children }) {
         last_payment_date: lastPaymentDate,
         payment_history: paymentHistory,
       };
-      const nextDocuments = documents.map((item) => ({
+      const nextDocuments = documents
+        .filter((item) => isSupportedEnrollmentDocumentType(item?.document_type))
+        .map((item) => ({
         id: createId("document"),
         enrollment_id: enrollmentId,
         document_type: item.document_type,
@@ -2706,7 +2954,7 @@ export function AppProvider({ children }) {
         verification_status: verificationStatus,
         remarks: item.remarks || "Uploaded during admission conversion",
         uploaded_at: enrolledDate || leadDate,
-      }));
+        }));
 
       commitLocalDb((draft) => ({
         ...draft,
@@ -2836,8 +3084,9 @@ export function AppProvider({ children }) {
       storeShadowEnrollmentPayload(updatedEnrollment || currentEnrollment, enrollmentPayload, removedEnrollmentColumns);
     }
 
-    if (documents.length) {
-      const payload = documents.map((item) => ({
+    const supportedDocuments = documents.filter((item) => isSupportedEnrollmentDocumentType(item?.document_type));
+    if (supportedDocuments.length) {
+      const payload = supportedDocuments.map((item) => ({
         enrollment_id: enrollmentId,
         document_type: item.document_type,
         file_url: item.file_url || "",
@@ -3345,13 +3594,19 @@ export function AppProvider({ children }) {
       let imported = 0;
 
       commitLocalDb((draft) => {
+        const reservedStudentCodes = new Set(
+          draft.students
+            .map((item) => normalizeStudentCodeValue(item?.student_code || ""))
+            .filter(Boolean),
+        );
+
         normalizedRows.forEach((row, index) => {
           const course = draft.courses.find(
             (item) =>
               item.course_name.toLowerCase() === String(row.course_name || "").trim().toLowerCase()
               || item.id === row.course_id,
           ) || draft.courses[0];
-          const leadDate = toIsoDate(row.lead_date || new Date());
+          const { stage, leadDate, followUpDate } = resolveImportedEnrollmentTiming(row);
           const studentId = createId("student");
           const enrollmentId = createId("enrollment");
           const totalFee = Number(row.total_fee || course?.fee || 0);
@@ -3363,12 +3618,19 @@ export function AppProvider({ children }) {
           }) || "One Time";
           const installmentsPlanned = Number(row.installments_planned || (paymentPlan === "EMI" ? 3 : 1));
           const installmentAmount = paymentPlan === "EMI" && installmentsPlanned ? Math.round(totalFee / installmentsPlanned) : totalFee;
-          const stage = row.pipeline_stage || (row.enrolled_date ? "Enrolled" : "Enquiry");
           const paymentStatus = normalizePaymentStatus(totalFee, amountPaid);
           const enrolledDate = row.enrolled_date || "";
           const lastPaymentDate = row.last_payment_date || "";
           const paymentMethod = row.payment_method || (amountPaid > 0 ? "UPI" : "");
           const studentEmail = row.email || buildImportedPlaceholderEmail(index);
+          const resolvedStudentCode = buildUniqueStudentCode(
+            row.student_code || "",
+            [...reservedStudentCodes],
+            { generateIfBlank: stage === "Enrolled" },
+          );
+          if (resolvedStudentCode) {
+            reservedStudentCodes.add(resolvedStudentCode);
+          }
           const paymentHistory = buildInitialPaymentHistory({
             total_fee: totalFee,
             payment_plan: paymentPlan,
@@ -3380,7 +3642,7 @@ export function AppProvider({ children }) {
 
           draft.students.unshift({
             id: studentId,
-            student_code: row.student_code || "",
+            student_code: resolvedStudentCode,
             full_name: row.full_name,
             email: studentEmail,
             phone: row.phone || "",
@@ -3408,7 +3670,7 @@ export function AppProvider({ children }) {
             pipeline_stage: stage,
             lead_date: leadDate,
             enrolled_date: enrolledDate,
-            follow_up_date: row.follow_up_date || getInitialEnquiryFollowUpDate(leadDate),
+            follow_up_date: followUpDate,
             payment_method: paymentMethod,
             payment_plan: paymentPlan,
             total_fee: totalFee,
@@ -3448,6 +3710,8 @@ export function AppProvider({ children }) {
     let imported = 0;
     const importedStudentRecords = [];
     const importedEnrollmentRecords = [];
+    const remoteStudents = await fetchRemoteStudents();
+    const reservedStudentCodes = new Set();
 
     const ensureImportCourse = async (row) => {
       if (row.course_id || row.course_name) {
@@ -3474,7 +3738,7 @@ export function AppProvider({ children }) {
 
     for (const [index, row] of normalizedRows.entries()) {
       const course = await ensureImportCourse(row);
-      const leadDate = toIsoDate(row.lead_date || new Date());
+      const { stage, leadDate, followUpDate } = resolveImportedEnrollmentTiming(row);
       const totalFee = Number(row.total_fee || course?.fee || 0);
       const amountPaid = Number(row.amount_paid || 0);
       const paymentPlan = inferPaymentPlan({
@@ -3484,12 +3748,10 @@ export function AppProvider({ children }) {
       }) || "One Time";
       const installmentsPlanned = Number(row.installments_planned || (paymentPlan === "EMI" ? 3 : 1));
       const installmentAmount = paymentPlan === "EMI" && installmentsPlanned ? Math.round(totalFee / installmentsPlanned) : totalFee;
-      const stage = row.pipeline_stage || (row.enrolled_date ? "Enrolled" : "Enquiry");
       const paymentStatus = normalizePaymentStatus(totalFee, amountPaid);
       const enrolledDate = row.enrolled_date || "";
       const lastPaymentDate = row.last_payment_date || "";
       const paymentMethod = row.payment_method || (amountPaid > 0 ? "UPI" : "");
-      const followUpDate = row.follow_up_date || getInitialEnquiryFollowUpDate(leadDate);
       const verificationStatus = row.verification_status || (stage === "Enrolled" ? "Approved" : "Pending");
       const enrollmentStatus = row.enrollment_status || (stage === "Enrolled" ? "Active" : stage === "Dropout" ? "Dropped" : "Follow-up");
       const studentEmail = row.email || buildImportedPlaceholderEmail(index);
@@ -3513,8 +3775,19 @@ export function AppProvider({ children }) {
         studentRecord = existingStudent;
       }
 
+      const resolvedStudentCode = await resolveUniqueStudentCodeForWrite({
+        preferredCode: row.student_code || studentRecord?.student_code || "",
+        generateIfBlank: stage === "Enrolled" && !studentRecord?.student_code,
+        excludeStudentId: studentRecord?.id || "",
+        existingStudents: remoteStudents,
+        reservedCodes: [...reservedStudentCodes],
+      });
+      if (resolvedStudentCode) {
+        reservedStudentCodes.add(resolvedStudentCode);
+      }
+
       const studentPayload = {
-        student_code: row.student_code || "",
+        student_code: resolvedStudentCode || null,
         full_name: row.full_name,
         email: studentEmail,
         phone: row.phone || "",
@@ -3619,15 +3892,21 @@ export function AppProvider({ children }) {
     }
 
     if (importedStudentRecords.length || importedEnrollmentRecords.length) {
-      setState((prev) => ({
-        ...prev,
-        students: dedupeRecordsById([...importedStudentRecords, ...prev.students]),
-        enrollments: dedupeRecordsById([...importedEnrollmentRecords, ...prev.enrollments]),
-      }));
+      setState((prev) => {
+        const nextState = {
+          ...prev,
+          students: dedupeRecordsById([...importedStudentRecords, ...prev.students]),
+          enrollments: dedupeRecordsById([...importedEnrollmentRecords, ...prev.enrollments]),
+        };
+        if (state.authUser) {
+          writeRemoteStateCache(state.authUser, nextState);
+        }
+        return nextState;
+      });
     }
 
     pushNotification({ type: "success", title: `${imported} enquiry records imported.` });
-    void refreshState(state.authUser);
+    await refreshState(state.authUser, { forceRemote: true });
     return { imported };
   };
 
@@ -3659,6 +3938,8 @@ export function AppProvider({ children }) {
       subject: options.subject,
       html: options.html,
       text: options.text,
+      logType: options.logType || emailType,
+      sentAt,
       documents: enrollmentDocuments,
       instituteName: options.instituteName || "CERTISURED",
     });
@@ -3681,7 +3962,9 @@ export function AppProvider({ children }) {
       sent_at: sentAt,
     };
 
-    const emailLogResult = await tryPersistEmailLog(log);
+    const emailLogResult = result.logged
+      ? { persisted: true, error: null }
+      : await tryPersistEmailLog(log);
     if (emailLogResult.error && !options.silent) {
       pushNotification({ type: "warning", title: "Email sent, but email_logs could not be saved in Supabase." });
     }
@@ -3698,6 +3981,122 @@ export function AppProvider({ children }) {
     }
 
     return result;
+  };
+
+  const sendStudentEnrollmentForm = async (enrollmentId) => {
+    const enrollmentRecord = state.enrollments.find((item) => item.id === enrollmentId);
+    if (!enrollmentRecord) {
+      throw new Error("Enquiry record not found.");
+    }
+
+    const studentRecord = state.students.find((item) => item.id === enrollmentRecord.student_id);
+    if (!studentRecord) {
+      throw new Error("Student record not found for this enquiry.");
+    }
+
+    if (!hasSupabaseEnv || !supabase) {
+      throw new Error("Student self-fill forms need Supabase to be configured.");
+    }
+
+    if (!isEnquiryStage(enrollmentRecord.pipeline_stage)) {
+      throw new Error("Only enquiry records can be sent to the student form.");
+    }
+
+    if (!isValidStudentEmailAddress(studentRecord.email)) {
+      throw new Error("Student email is missing or invalid. Add a working email before sending the form.");
+    }
+
+    const courseRecord = state.courses.find((item) => item.id === enrollmentRecord.course_id)
+      || state.courses.find((item) => item.course_name === enrollmentRecord.course_name)
+      || null;
+
+    const token = createStudentIntakeToken();
+    const tokenHash = await hashStudentIntakeToken(token);
+    const pendingPatch = {
+      student_form_status: "Pending",
+      student_form_token_hash: tokenHash,
+      student_form_sent_at: null,
+      student_form_expires_at: new Date(Date.now() + (7 * 24 * 60 * 60 * 1000)).toISOString(),
+      student_form_submitted_at: null,
+    };
+
+    const { error: pendingError, removedColumns: removedPendingColumns = [] } = await runMutationWithSchemaRetry({
+      tableName: "enrollments",
+      payload: pendingPatch,
+      execute: (payload) =>
+        supabase
+          .from("enrollments")
+          .update(payload)
+          .eq("id", enrollmentId)
+          .select()
+          .single(),
+    });
+    if (pendingError) {
+      throw formatEnrollmentAccessError(pendingError, "update", "enrollments");
+    }
+    if (removedPendingColumns.length) {
+      storeShadowEnrollmentPayload(enrollmentRecord, pendingPatch, removedPendingColumns);
+    }
+
+    const formUrl = buildStudentIntakeUrl({ enrollmentId, token });
+    const expiryLabel = new Intl.DateTimeFormat("en-IN", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(pendingPatch.student_form_expires_at));
+    const emailMessage = buildStudentIntakeInviteEmail({
+      studentName: studentRecord.full_name,
+      courseName: courseRecord?.course_name || enrollmentRecord.course_name || "Selected Course",
+      batchName: enrollmentRecord.batch || courseRecord?.batch || "",
+      formUrl,
+      expiryLabel,
+    });
+
+    try {
+      await logEmail("Student Enrollment Form", {
+        ...enrollmentRecord,
+        ...pendingPatch,
+      }, {
+        logType: "Student Enrollment Form",
+        student: studentRecord,
+        course: courseRecord || enrollmentRecord.course_name || "",
+        currentStage: "Enquiry",
+        subject: emailMessage.subject,
+        html: emailMessage.html,
+        text: emailMessage.text,
+        successTitle: "Student enrollment form sent successfully.",
+      });
+    } catch (error) {
+      throw error;
+    }
+
+    const sentPatch = {
+      student_form_status: "Sent",
+      student_form_sent_at: new Date().toISOString(),
+      student_form_expires_at: pendingPatch.student_form_expires_at,
+      student_form_token_hash: tokenHash,
+      student_form_submitted_at: null,
+    };
+
+    const { error: sentError, removedColumns: removedSentColumns = [] } = await runMutationWithSchemaRetry({
+      tableName: "enrollments",
+      payload: sentPatch,
+      execute: (payload) =>
+        supabase
+          .from("enrollments")
+          .update(payload)
+          .eq("id", enrollmentId)
+          .select()
+          .single(),
+    });
+    if (sentError) {
+      throw formatEnrollmentAccessError(sentError, "update", "enrollments");
+    }
+    if (removedSentColumns.length) {
+      storeShadowEnrollmentPayload(enrollmentRecord, sentPatch, removedSentColumns);
+    }
+
+    await refreshState(state.authUser);
+    return { formUrl };
   };
 
   const appendEmailLogLocally = (log) => {
@@ -3799,7 +4198,9 @@ export function AppProvider({ children }) {
       sent_at: sentAt,
     };
 
-    const emailLogResult = await tryPersistEmailLog(log);
+    const emailLogResult = emailResult.logged
+      ? { persisted: true, error: null }
+      : await tryPersistEmailLog(log);
     if (emailLogResult.error && !options.silent) {
       pushNotification({ type: "warning", title: "Payment email log could not be saved in Supabase." });
     }
@@ -3858,14 +4259,14 @@ export function AppProvider({ children }) {
       });
 
       if (!emailResult.ok) {
-        const failedLog = {
-          enrollment_id: enrollmentId,
-          email_type: "Admission Follow-up",
-          status: emailResult.status || "Failed",
-          sent_at: sentAt,
-        };
-
-        const failedLogResult = await tryPersistEmailLog(failedLog);
+        const failedLogResult = emailResult.logged
+          ? { persisted: true, error: null }
+          : await tryPersistEmailLog({
+            enrollment_id: enrollmentId,
+            email_type: "Admission Follow-up",
+            status: emailResult.status || "Failed",
+            sent_at: sentAt,
+          });
         if (failedLogResult.error && !options.silent) {
           pushNotification({ type: "warning", title: "Email log could not be saved in Supabase. Check the email_logs RLS policy." });
         }
@@ -3930,12 +4331,14 @@ export function AppProvider({ children }) {
         )),
       }));
 
-      const emailLogResult = await tryPersistEmailLog({
-        enrollment_id: enrollmentId,
-        email_type: "Admission Follow-up",
-        status: emailResult.status || "Sent",
-        sent_at: sentAt,
-      });
+      const emailLogResult = emailResult.logged
+        ? { persisted: true, error: null }
+        : await tryPersistEmailLog({
+          enrollment_id: enrollmentId,
+          email_type: "Admission Follow-up",
+          status: emailResult.status || "Sent",
+          sent_at: sentAt,
+        });
       if (emailLogResult.error && !options.silent) {
         pushNotification({ type: "warning", title: "Follow-up email sent, but email_logs insert was blocked by Supabase RLS." });
       }
@@ -4231,6 +4634,7 @@ export function AppProvider({ children }) {
       resetPassword,
       createEnrollment,
       convertEnquiryToEnrollment,
+      sendStudentEnrollmentForm,
       updateEnrollmentStatus,
       saveEnrollmentPaymentDetails,
       updateStudentProfile,

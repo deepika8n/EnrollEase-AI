@@ -1,2 +1,8 @@
 [functions.automation-dispatch]
 verify_jwt = false
+
+[functions.public-enquiry]
+verify_jwt = false
+
+[functions.student-intake]
+verify_jwt = false

@@ -1,10 +1,13 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { sendEmail } from "../_shared/email.ts";
 
 const ENQUIRY_FOLLOW_UP_INTERVAL_DAYS = 3;
 const ENQUIRY_MAX_FOLLOW_UP_CYCLES = 2;
+const ENQUIRY_AUTO_DROPOUT_DAYS = 7;
 const INDIA_TIMEZONE = "Asia/Kolkata";
 const JSON_HEADERS = { "Content-Type": "application/json" };
 const CERTISURED_PHONE = "8976543209";
+const AUTO_DROPOUT_REASON = "Automatically moved to dropout after 7 days without enrollment.";
 
 type StudentRecord = {
   id: string;
@@ -39,6 +42,9 @@ type EnrollmentRecord = {
   dropout_reason: string | null;
   last_payment_date: string | null;
   created_at: string | null;
+  student_form_status: string | null;
+  student_form_sent_at: string | null;
+  student_form_expires_at: string | null;
 };
 
 type EmailLogRecord = {
@@ -136,6 +142,10 @@ function getInitialEnquiryFollowUpDate(leadDate = "") {
 
 function getFinalEnquiryFollowUpDate(leadDate = "") {
   return addDays(leadDate, ENQUIRY_FOLLOW_UP_INTERVAL_DAYS * ENQUIRY_MAX_FOLLOW_UP_CYCLES);
+}
+
+function getEnquiryAutoDropoutDate(leadDate = "") {
+  return addDays(leadDate, ENQUIRY_AUTO_DROPOUT_DAYS);
 }
 
 function getNextEnquiryFollowUpDate({ leadDate = "", followUpDate = "" } = {}) {
@@ -301,6 +311,54 @@ function buildCertisuredHeader({ title, subtitle = "" }: { title: string; subtit
   `;
 }
 
+function formatDateTimeLabel(value: string | Date | null | undefined) {
+  if (!value) return "the next 7 days";
+  const parsed = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(parsed.valueOf())) return "the next 7 days";
+  return new Intl.DateTimeFormat("en-IN", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: INDIA_TIMEZONE,
+  }).format(parsed);
+}
+
+function createToken() {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  let binary = "";
+  bytes.forEach((value) => {
+    binary += String.fromCharCode(value);
+  });
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+async function sha256(value = "") {
+  const bytes = new TextEncoder().encode(String(value || ""));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest)).map((item) => item.toString(16).padStart(2, "0")).join("");
+}
+
+function resolvePublicAppOrigin() {
+  const configuredOrigin = String(
+    Deno.env.get("PUBLIC_APP_URL")
+    || Deno.env.get("SITE_URL")
+    || Deno.env.get("APP_URL")
+    || Deno.env.get("VITE_PUBLIC_APP_URL")
+    || "",
+  ).trim();
+  return configuredOrigin.replace(/\/+$/, "");
+}
+
+function buildStudentIntakeUrl(origin = "", enrollmentId = "", token = "") {
+  const safeOrigin = String(origin || "").trim().replace(/\/+$/, "");
+  const safeEnrollmentId = encodeURIComponent(String(enrollmentId || "").trim());
+  const params = new URLSearchParams({ token: String(token || "").trim() });
+  if (!safeOrigin || !safeEnrollmentId || !params.get("token")) {
+    return "";
+  }
+  return `${safeOrigin}/student-intake/${safeEnrollmentId}?${params.toString()}`;
+}
+
 function buildFollowUpEmailHtml({ studentName }: { studentName?: string }) {
   const safeStudentName = escapeHtml(studentName || "Student");
 
@@ -356,6 +414,90 @@ We look forward to welcoming you.
 
 Best Regards,
 CERTISURED`;
+}
+
+function buildEnrollmentFormReminderEmail({
+  studentName,
+  courseName,
+  batchName,
+  formUrl,
+  expiryLabel,
+  followUpNumber,
+}: {
+  studentName?: string;
+  courseName?: string;
+  batchName?: string | null;
+  formUrl: string;
+  expiryLabel: string;
+  followUpNumber: number;
+}) {
+  const safeStudentName = escapeHtml(studentName || "Student");
+  const safeCourseName = escapeHtml(courseName || "Selected Course");
+  const safeBatchName = escapeHtml(batchName || "Batch details will be shared by the admissions team");
+  const safeFormUrl = escapeHtml(formUrl || "");
+  const safeExpiryLabel = escapeHtml(expiryLabel || "the next 7 days");
+  const reminderLabel = followUpNumber > 1 ? "Second Reminder" : "Reminder";
+
+  return {
+    subject: "Reminder: Complete Your Enrollment Form - CERTISURED",
+    html: `
+      <div style="margin:0;padding:24px;background:#eef4fb;font-family:'Plus Jakarta Sans',Arial,sans-serif;color:#10233c;">
+        <div style="max-width:680px;margin:0 auto;background:#ffffff;border:1px solid #dbe8f7;border-radius:28px;overflow:hidden;box-shadow:0 22px 50px rgba(15,23,42,0.08);">
+          ${buildCertisuredHeader({ title: "Enrollment Form Reminder", subtitle: reminderLabel })}
+          <div style="padding:32px;">
+            <p style="margin:0;font-size:16px;line-height:1.8;">Dear ${safeStudentName},</p>
+            <p style="margin:18px 0 0;font-size:15px;line-height:1.85;color:#42556d;">Your admission enquiry is active at <strong>CERTISURED</strong>.</p>
+            <p style="margin:14px 0 0;font-size:15px;line-height:1.85;color:#42556d;">Please complete your student enrollment form so our admissions team can verify your details and continue your admission process.</p>
+
+            <div style="margin-top:24px;padding:22px 24px;border-radius:22px;background:#f8fbff;border:1px solid #dce9f7;">
+              <p style="margin:0 0 14px;font-size:14px;font-weight:700;color:#163459;">Enrollment summary</p>
+              <div style="font-size:15px;line-height:1.9;color:#42556d;">
+                <strong>Course:</strong> ${safeCourseName}<br />
+                <strong>Batch:</strong> ${safeBatchName}<br />
+                <strong>Form link valid until:</strong> ${safeExpiryLabel}
+              </div>
+            </div>
+
+            <div style="margin-top:26px;">
+              <a href="${safeFormUrl}" style="display:inline-block;padding:14px 24px;border-radius:16px;background:#16a34a;color:#ffffff;text-decoration:none;font-size:14px;font-weight:800;letter-spacing:0.04em;">
+                Open Enrollment Form
+              </a>
+            </div>
+
+            <p style="margin:18px 0 0;font-size:14px;line-height:1.8;color:#64748b;">
+              If the button does not open, copy and paste this link into your browser:<br />
+              <span style="word-break:break-all;color:#1d5ea8;">${safeFormUrl}</span>
+            </p>
+
+            <div style="margin-top:24px;padding:18px 20px;border-radius:20px;background:#fffaf0;border:1px solid #fde7b0;color:#7b5a06;font-size:14px;line-height:1.8;">
+              Please keep your Aadhaar document and a passport-style photo ready before you start.
+            </div>
+
+            <div style="margin-top:28px;padding-top:22px;border-top:1px solid #e4edf6;">
+              <p style="margin:0;font-size:15px;line-height:1.85;color:#10233c;">Regards,<br /><strong>CERTISURED Admissions Team</strong></p>
+            </div>
+          </div>
+        </div>
+      </div>
+    `,
+    text: `Dear ${studentName || "Student"},
+
+Your admission enquiry is active at CERTISURED.
+
+Please complete your student enrollment form so our admissions team can verify your details and continue your admission process.
+
+Course: ${courseName || "Selected Course"}
+Batch: ${batchName || "Batch details will be shared by the admissions team"}
+Form link valid until: ${expiryLabel || "the next 7 days"}
+
+Open the enrollment form:
+${formUrl || ""}
+
+Please keep your Aadhaar document and a passport-style photo ready before you start.
+
+Regards,
+CERTISURED Admissions Team`,
+  };
 }
 
 function buildAdmissionConfirmationEmailHtml({
@@ -673,7 +815,11 @@ function findRelatedCoursesForEnrollment(courseRecord: CourseRecord | null, cour
     .map(({ score: _score, ...course }) => course);
 }
 
-function buildFollowUpDispatch(enrollment: EnrollmentRecord, student: StudentRecord) {
+async function buildFollowUpDispatch(
+  enrollment: EnrollmentRecord,
+  student: StudentRecord,
+  successfulFollowUpCount: number,
+) {
   const sentAt = new Date().toISOString();
   const leadDate = enrollment.lead_date || enrollment.created_at || getTodayIsoDate();
   const currentFollowUpDate = toIsoDate(enrollment.follow_up_date || getInitialEnquiryFollowUpDate(leadDate));
@@ -686,28 +832,39 @@ function buildFollowUpDispatch(enrollment: EnrollmentRecord, student: StudentRec
     })
     : "";
   const nextFollowUpDate = advancedFollowUpDate || currentFollowUpDate || getInitialEnquiryFollowUpDate(leadDate);
-  const nextFollowUpDateLabel = formatFollowUpDateLabel(nextFollowUpDate || getFinalEnquiryFollowUpDate(leadDate));
-  const subject = "Admission Follow-up";
-  const html = buildFollowUpEmailHtml({
+  const followUpNumber = Math.min(successfulFollowUpCount + 1, ENQUIRY_MAX_FOLLOW_UP_CYCLES);
+  const formToken = createToken();
+  const formTokenHash = await sha256(formToken);
+  const formExpiresAt = new Date(Date.now() + (7 * 24 * 60 * 60 * 1000)).toISOString();
+  const publicAppOrigin = resolvePublicAppOrigin();
+  const formUrl = buildStudentIntakeUrl(publicAppOrigin, enrollment.id, formToken);
+  if (!formUrl) {
+    throw new Error("PUBLIC_APP_URL is missing for student enrollment form follow-up emails.");
+  }
+  const inviteEmail = buildEnrollmentFormReminderEmail({
     studentName: student.full_name,
-  });
-  const text = buildFollowUpEmailText({
-    studentName: student.full_name,
+    courseName: enrollment.course_name || "Selected Course",
+    batchName: enrollment.batch,
+    formUrl,
+    expiryLabel: formatDateTimeLabel(formExpiresAt),
+    followUpNumber,
   });
 
   return {
-    logType: "Admission Follow-up",
+    logType: `Student Enrollment Form Follow-up ${followUpNumber}`,
     logStatus: "Sent",
     sentAt,
     nextFollowUpDate,
+    formTokenHash,
+    formExpiresAt,
     payload: buildEmailAutomationPayload({
       agentType: "follow_up_agent",
-      actionType: "send_follow_up_email",
-      templateKey: "admission_follow_up",
-      emailType: subject,
-      subject,
-      html,
-      text,
+      actionType: "send_student_enrollment_form_follow_up_email",
+      templateKey: "student_enrollment_form_follow_up",
+      emailType: inviteEmail.subject,
+      subject: inviteEmail.subject,
+      html: inviteEmail.html,
+      text: inviteEmail.text,
       enrollment,
       student,
       course: enrollment.course_name || "",
@@ -715,12 +872,13 @@ function buildFollowUpDispatch(enrollment: EnrollmentRecord, student: StudentRec
       metadata: {
         sentAt,
         nextFollowUpDate,
-        nextFollowUpDateLabel,
+        formExpiresAt,
+        followUpNumber,
       },
     }),
-    event: "email.follow_up",
+    event: "email.student_enrollment_form_follow_up",
     agentType: "follow_up_agent",
-    actionType: "send_follow_up_email",
+    actionType: "send_student_enrollment_form_follow_up_email",
   };
 }
 
@@ -865,58 +1023,25 @@ function resolveSupabaseSecretKey() {
   throw new Error("No Supabase secret key is available in the Edge Function environment.");
 }
 
-async function sendAutomationRequest(payload: Record<string, unknown>, event: string, agentType: string, actionType: string): Promise<SendResult> {
-  const webhookUrl = String(Deno.env.get("N8N_WEBHOOK_URL") || "").trim();
-  const webhookSecret = String(Deno.env.get("N8N_WEBHOOK_SECRET") || "").trim();
+async function sendAutomationRequest(payload: Record<string, unknown>, _event: string, _agentType: string, _actionType: string): Promise<SendResult> {
+  try {
+    await sendEmail({
+      to: String(payload.recipientEmail || "").trim(),
+      subject: String(payload.subject || "").trim(),
+      html: String(payload.html || payload.htmlMessage || ""),
+      text: String(payload.text || payload.textMessage || payload.message || ""),
+    });
 
-  if (!webhookUrl) {
+    return {
+      ok: true,
+      message: "Email sent successfully.",
+    };
+  } catch (error) {
     return {
       ok: false,
-      message: "N8N_WEBHOOK_URL is not configured in Edge Function secrets.",
+      message: error instanceof Error ? error.message : "Unable to send email.",
     };
   }
-
-  const requestBody = {
-    event,
-    agentType,
-    actionType,
-    flowName: "email_notification",
-    source: "EnrollEase AI",
-    timestamp: new Date().toISOString(),
-    payload,
-  };
-
-  const response = await fetch(webhookUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-enrollease-event": event,
-      "x-enrollease-agent": agentType,
-      "x-enrollease-action": actionType,
-      ...(webhookSecret ? { "x-enrollease-secret": webhookSecret } : {}),
-    },
-    body: JSON.stringify(requestBody),
-  });
-
-  const rawText = await response.text();
-  const data = readJsonResponse(rawText);
-
-  if (!response.ok) {
-    const message = typeof data === "object" && data && "message" in data && data.message
-      ? String(data.message)
-      : `n8n returned ${response.status}`;
-    return {
-      ok: false,
-      message,
-    };
-  }
-
-  return {
-    ok: true,
-    message: typeof data === "object" && data && "message" in data && data.message
-      ? String(data.message)
-      : "Automation workflow completed successfully.",
-  };
 }
 
 Deno.serve(async (request) => {
@@ -961,7 +1086,7 @@ Deno.serve(async (request) => {
         .select("id, course_name, fee, mode"),
       supabaseAdmin
         .from("enrollments")
-        .select("id, student_id, course_id, course_name, batch, pipeline_stage, lead_date, enrolled_date, follow_up_date, total_fee, amount_paid, next_due_date, payment_status, verification_status, remarks, dropout_reason, last_payment_date, created_at"),
+        .select("id, student_id, course_id, course_name, batch, pipeline_stage, lead_date, enrolled_date, follow_up_date, total_fee, amount_paid, next_due_date, payment_status, verification_status, remarks, dropout_reason, last_payment_date, created_at, student_form_status, student_form_sent_at, student_form_expires_at"),
       supabaseAdmin
         .from("email_logs")
         .select("enrollment_id, email_type, status, sent_at")
@@ -1021,8 +1146,11 @@ Deno.serve(async (request) => {
       const relatedCourses = kind === "payment_update" || kind === "payment_reminder"
         ? findRelatedCoursesForEnrollment(course, courses)
         : [];
+      const successfulFollowUpCount = kind === "follow_up"
+        ? Math.min(getSuccessfulFollowUpCount(emailLogs, enrollment.id), ENQUIRY_MAX_FOLLOW_UP_CYCLES)
+        : 0;
       const dispatch = kind === "follow_up"
-        ? buildFollowUpDispatch(enrollment, student)
+        ? await buildFollowUpDispatch(enrollment, student, successfulFollowUpCount)
         : kind === "admission_confirmation"
           ? buildAdmissionConfirmationDispatch(enrollment, student, course)
           : buildPaymentDispatch(
@@ -1055,7 +1183,13 @@ Deno.serve(async (request) => {
       if (kind === "follow_up" && dispatch.nextFollowUpDate) {
         const { error } = await supabaseAdmin
           .from("enrollments")
-          .update({ follow_up_date: dispatch.nextFollowUpDate })
+          .update({
+            follow_up_date: dispatch.nextFollowUpDate,
+            student_form_status: "Sent",
+            student_form_sent_at: dispatch.sentAt,
+            student_form_expires_at: dispatch.formExpiresAt,
+            student_form_token_hash: dispatch.formTokenHash,
+          })
           .eq("id", enrollment.id);
         if (error) {
           throw error;
@@ -1076,7 +1210,28 @@ Deno.serve(async (request) => {
         || null;
 
       if (isEnquiryStage(enrollment.pipeline_stage || "")) {
+        if (String(enrollment.student_form_status || "").trim().toLowerCase() === "submitted") {
+          continue;
+        }
         const leadDate = enrollment.lead_date || enrollment.created_at || "";
+        const autoDropoutDate = getEnquiryAutoDropoutDate(leadDate);
+        if (autoDropoutDate && compareIsoDates(autoDropoutDate, todayIsoDate) <= 0) {
+          const { error } = await supabaseAdmin
+            .from("enrollments")
+            .update({
+              pipeline_stage: "Dropout",
+              enrollment_status: "Dropped",
+              dropout_reason: enrollment.dropout_reason || AUTO_DROPOUT_REASON,
+              follow_up_date: autoDropoutDate,
+            })
+            .eq("id", enrollment.id)
+            .eq("pipeline_stage", "Enquiry");
+          if (error) {
+            throw error;
+          }
+          dispatched.push(`Auto Dropout:${enrollment.id}`);
+          continue;
+        }
         const requiredCycles = getRequiredEnquiryFollowUpCycles({
           leadDate,
           today: todayIsoDate,

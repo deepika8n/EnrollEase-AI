@@ -1,17 +1,17 @@
-import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import ToastStack from "./components/ToastStack";
 import { useApp } from "./context/AppContext";
-
-const LandingPageSimple = lazy(() => import("./pages/LandingPageSimple"));
-const LoginPageSimple = lazy(() => import("./pages/LoginPageSimple"));
-const DashboardHoverPage = lazy(() => import("./pages/DashboardHoverPage"));
-const EnrollmentPageSimple = lazy(() => import("./pages/EnrollmentPageSimple"));
-const RecordsPage = lazy(() => import("./pages/RecordsPage"));
-const StudentProfilePageFixed = lazy(() => import("./pages/StudentProfilePageFixed"));
-const PaymentsPage = lazy(() => import("./pages/PaymentsPage"));
-const EnquiriesPage = lazy(() => import("./pages/EnquiriesPage"));
-const SettingsPageSimple = lazy(() => import("./pages/SettingsPageSimple"));
+import DashboardHoverPage from "./pages/DashboardHoverPage";
+import EnquiriesPage from "./pages/EnquiriesPage";
+import EnrollmentPageSimple from "./pages/EnrollmentPageSimple";
+import LandingPageSimple from "./pages/LandingPageSimple";
+import LoginPageSimple from "./pages/LoginPageSimple";
+import PaymentsPage from "./pages/PaymentsPage";
+import PublicEnquiryPage from "./pages/PublicEnquiryPage";
+import RecordsPage from "./pages/RecordsPage";
+import SettingsPageSimple from "./pages/SettingsPageSimple";
+import StudentIntakePage from "./pages/StudentIntakePage";
+import StudentProfilePageFixed from "./pages/StudentProfilePageFixed";
 
 function RouteLoader() {
   return (
@@ -43,7 +43,7 @@ function ProtectedRoute({ children }) {
   }
 
   if (!currentUser) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/admin-login" replace />;
   }
 
   return children;
@@ -53,21 +53,22 @@ export default function App() {
   return (
     <>
       <ToastStack />
-      <Suspense fallback={<RouteLoader />}>
-        <Routes>
-          <Route path="/" element={<LandingPageSimple />} />
-          <Route path="/login" element={<LoginPageSimple />} />
-          <Route path="/dashboard" element={<ProtectedRoute><DashboardHoverPage /></ProtectedRoute>} />
-          <Route path="/enrollment" element={<ProtectedRoute><EnrollmentPageSimple /></ProtectedRoute>} />
-          <Route path="/records" element={<ProtectedRoute><RecordsPage /></ProtectedRoute>} />
-          <Route path="/students/:id" element={<ProtectedRoute><StudentProfilePageFixed /></ProtectedRoute>} />
-          <Route path="/payments" element={<ProtectedRoute><PaymentsPage /></ProtectedRoute>} />
-          <Route path="/enquiries" element={<ProtectedRoute><EnquiriesPage /></ProtectedRoute>} />
-          <Route path="/settings" element={<ProtectedRoute><SettingsPageSimple /></ProtectedRoute>} />
-          <Route path="/signup" element={<Navigate to="/login" replace />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Suspense>
+      <Routes>
+        <Route path="/" element={<LandingPageSimple />} />
+        <Route path="/enquiry" element={<PublicEnquiryPage />} />
+        <Route path="/admin-login" element={<LoginPageSimple />} />
+        <Route path="/login" element={<Navigate to="/admin-login" replace />} />
+        <Route path="/dashboard" element={<ProtectedRoute><DashboardHoverPage /></ProtectedRoute>} />
+        <Route path="/enrollment" element={<ProtectedRoute><EnrollmentPageSimple /></ProtectedRoute>} />
+        <Route path="/records" element={<ProtectedRoute><RecordsPage /></ProtectedRoute>} />
+        <Route path="/students/:id" element={<ProtectedRoute><StudentProfilePageFixed /></ProtectedRoute>} />
+        <Route path="/payments" element={<ProtectedRoute><PaymentsPage /></ProtectedRoute>} />
+        <Route path="/enquiries" element={<ProtectedRoute><EnquiriesPage /></ProtectedRoute>} />
+        <Route path="/settings" element={<ProtectedRoute><SettingsPageSimple /></ProtectedRoute>} />
+        <Route path="/student-intake/:enrollmentId" element={<StudentIntakePage />} />
+        <Route path="/signup" element={<Navigate to="/admin-login" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
     </>
   );
 }

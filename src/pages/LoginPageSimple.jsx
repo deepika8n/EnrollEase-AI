@@ -146,7 +146,16 @@ export default function LoginPageSimple() {
                 <h2 className="mt-5 text-center font-display text-[1.8rem] font-bold tracking-[-0.05em] text-slate-950 sm:text-[2rem]">
                   Reset your password
                 </h2>
-              ) : null}
+              ) : (
+                <>
+                  <p className="mt-5 text-[11px] font-bold uppercase tracking-[0.28em] text-brand-500/72">
+                    Admin Only
+                  </p>
+                  <h2 className="mt-3 text-center font-display text-[1.8rem] font-bold tracking-[-0.05em] text-slate-950 sm:text-[2rem]">
+                    Sign in to manage admissions
+                  </h2>
+                </>
+              )}
             </div>
 
             {clearingFreshSession ? (

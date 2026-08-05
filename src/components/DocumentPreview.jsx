@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { GlobalWorkerOptions, getDocument } from "pdfjs-dist";
 import pdfWorkerSrc from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { getDocumentFileName, getDocumentSourceKind, isOpenableSource } from "../utils/fileHelpers";
+import { getDocumentFileName, getDocumentSourceKind, isOpenableSource, openDocumentFile } from "../utils/fileHelpers";
 
 GlobalWorkerOptions.workerSrc = pdfWorkerSrc;
 const pdfZoomLevels = [100, 125, 150, 200, 250, 300];
@@ -70,6 +70,21 @@ function FallbackCard({ kind, fileName, className = "" }) {
       <p className="text-base font-semibold text-slate-900">{isPdf ? "PDF Document" : "Document available"}</p>
       <p className="max-w-full break-words text-sm text-slate-500">{fileName}</p>
     </PreviewShell>
+  );
+}
+
+function NativePdfPreview({ src, title, className = "", interactive = false }) {
+  return (
+    <div className={`overflow-hidden rounded-[24px] border border-slate-200 bg-white ${className}`.trim()}>
+      <object
+        data={src}
+        type="application/pdf"
+        aria-label={title || "PDF preview"}
+        className={`h-full min-h-[220px] w-full bg-white ${interactive ? "" : "pointer-events-none"}`.trim()}
+      >
+        <FallbackCard kind="pdf" fileName={title || "PDF document"} className="h-full min-h-[220px] border-0 shadow-none" />
+      </object>
+    </div>
   );
 }
 
@@ -203,6 +218,36 @@ export default function DocumentPreview({ src, alt, title, fileName, className =
   }
 
   if (sourceKind === "pdf") {
+    if (enablePdfZoom) {
+      return (
+        <div className={`flex h-full min-h-[260px] w-full flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white ${className}`.trim()}>
+          <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+            <p className="text-sm font-medium text-slate-500">PDF preview</p>
+            <button
+              type="button"
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-600"
+              onClick={() => openDocumentFile(src)}
+            >
+              Open PDF
+            </button>
+          </div>
+          <iframe
+            src={src}
+            title={title || alt || displayName}
+            className="min-h-0 flex-1 w-full bg-white"
+          />
+        </div>
+      );
+    }
+
+    return (
+      <NativePdfPreview
+        src={src}
+        title={title || alt || displayName}
+        className={className}
+      />
+    );
+
     if (pdfStatus === "ready" && pdfThumbnail) {
       if (enablePdfZoom) {
         return (

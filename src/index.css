@@ -31,13 +31,20 @@
   }
 
   html {
+    min-height: 100%;
     scroll-behavior: smooth;
     overflow-x: hidden;
   }
 
   body {
     @apply min-h-screen bg-canvas bg-mesh font-body text-brand-500 antialiased;
+    margin: 0;
     overflow-x: hidden;
+  }
+
+  #root {
+    min-height: 100vh;
+    overflow-x: clip;
   }
 
   a {
@@ -161,6 +168,42 @@
     }
     100% {
       transform: scaleY(1) scaleX(1);
+    }
+  }
+
+  @keyframes partnersMarquee {
+    0% {
+      transform: translateX(8%);
+    }
+    100% {
+      transform: translateX(-58%);
+    }
+  }
+
+  @keyframes certisuredGradientShift {
+    0% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+    100% {
+      background-position: 0% 50%;
+    }
+  }
+
+  @keyframes certisuredBlinkGlow {
+    0%, 100% {
+      opacity: 1;
+      filter: drop-shadow(0 0 0 rgba(59, 130, 246, 0));
+    }
+    45% {
+      opacity: 0.96;
+      filter: drop-shadow(0 0 14px rgba(59, 130, 246, 0.16)) drop-shadow(0 0 24px rgba(34, 197, 94, 0.18));
+    }
+    60% {
+      opacity: 0.86;
+      filter: drop-shadow(0 0 18px rgba(236, 72, 153, 0.22)) drop-shadow(0 0 28px rgba(250, 204, 21, 0.2));
     }
   }
 
@@ -331,6 +374,93 @@
     transform-origin: center;
   }
 
+  .course-flip-card {
+    perspective: 1400px;
+    @apply relative block h-[185px] w-full text-left;
+  }
+
+  .course-flip-card:hover {
+    transform: translateY(-4px) scale(1.01);
+  }
+
+  .course-flip-card-inner {
+    transform-style: preserve-3d;
+    transition: transform 780ms cubic-bezier(0.22, 1, 0.36, 1);
+    @apply relative block h-full w-full;
+  }
+
+  .course-flip-card-inner.is-flipped {
+    transform: rotateY(180deg) scale(1.01);
+  }
+
+  .course-flip-face {
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    overflow: hidden;
+    @apply absolute inset-0 flex h-full w-full flex-col rounded-[20px] border border-slate-200 p-3.5 shadow-[0_14px_30px_rgba(9,30,66,0.09)];
+  }
+
+  .course-flip-front {
+    background:
+      radial-gradient(circle at 18% 18%, rgba(255,255,255,0.16), transparent 28%),
+      linear-gradient(135deg, #123a76 0%, #1f4f9d 38%, #14b8a6 72%, #22c55e 100%);
+  }
+
+  .course-flip-back {
+    transform: rotateY(180deg);
+    background:
+      radial-gradient(circle at 20% 20%, rgba(255,255,255,0.18), transparent 28%),
+      linear-gradient(135deg, #0f2f5f 0%, #2563eb 48%, #06b6d4 100%);
+    box-shadow: 0 20px 45px rgba(37, 99, 235, 0.22);
+  }
+
+  .course-fee-reveal {
+    animation: welcomeFade 500ms ease both;
+    text-shadow: 0 8px 24px rgba(15, 23, 42, 0.2);
+  }
+
+  .course-glow-chip {
+    background: rgba(255, 255, 255, 0.16);
+    box-shadow: 0 10px 24px rgba(255, 255, 255, 0.14);
+  }
+
+  .partners-marquee-shell {
+    @apply relative overflow-hidden;
+    mask-image: linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%);
+  }
+
+  .partners-marquee-track {
+    width: max-content;
+    animation: partnersMarquee 24s linear infinite alternate;
+    @apply flex items-center gap-4 pr-8;
+  }
+
+  .partners-marquee-item {
+    min-width: 210px;
+    @apply inline-flex h-24 items-center justify-center rounded-[20px] border border-slate-200 bg-white px-7 shadow-[0_10px_24px_rgba(9,30,66,0.05)];
+  }
+
+  .partners-marquee-name {
+    letter-spacing: 0;
+    @apply text-[2rem] font-extrabold;
+  }
+
+  .certisured-illustration-wrap {
+    @apply mx-auto w-full max-w-[760px];
+  }
+
+  .certisured-heading-glow {
+    background-image: linear-gradient(90deg, #08112c 0%, #2563eb 18%, #06b6d4 36%, #22c55e 54%, #f59e0b 72%, #ec4899 88%, #08112c 100%);
+    background-size: 220% 220%;
+    color: transparent;
+    -webkit-background-clip: text;
+    background-clip: text;
+    animation:
+      certisuredGradientShift 5.5s ease-in-out infinite,
+      certisuredBlinkGlow 2.6s ease-in-out infinite;
+  }
+
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -342,6 +472,17 @@
     transition: none !important;
     opacity: 1 !important;
     transform: none !important;
+    filter: none !important;
+  }
+
+  .partners-marquee-track {
+    animation: none !important;
+    transform: none !important;
+  }
+
+  .certisured-heading-glow {
+    animation: none !important;
+    background-position: 50% 50% !important;
     filter: none !important;
   }
 }

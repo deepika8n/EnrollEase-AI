@@ -43,6 +43,15 @@ function normalizeStudentName(value = "") {
   return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+function getStudentRecordKey(record) {
+  return (
+    record.student?.id
+    || normalizeStudentName(record.student?.full_name || "")
+    || record.enrollment?.id
+    || record.id
+  );
+}
+
 function toMonthKey(value) {
   const date = parseDate(value);
   if (!date) return "";
@@ -253,14 +262,36 @@ export default function DashboardHoverPage() {
     const courseDistribution = [...courseDistributionMap.entries()]
       .map(([label, value]) => ({ label, value }))
       .sort((left, right) => right.value - left.value);
-    const dropoutRecords = [...portalRecords]
+    const dropoutRecordMap = new Map();
+
+    [...portalRecords]
       .filter((record) => record.isDropoutRecord)
       .filter((record) => !HIDDEN_DROPOUT_STUDENTS.has(normalizeStudentName(record.student?.full_name || "")))
-      .sort((left, right) => {
-        const rightDate = parseDate(right.enrollment.dropout_date || right.enrollment.follow_up_date || right.enrollment.lead_date || right.enrollment.created_at);
-        const leftDate = parseDate(left.enrollment.dropout_date || left.enrollment.follow_up_date || left.enrollment.lead_date || left.enrollment.created_at);
-        return (rightDate?.getTime() || 0) - (leftDate?.getTime() || 0);
+      .forEach((record) => {
+        const recordKey = getStudentRecordKey(record);
+        const existingRecord = dropoutRecordMap.get(recordKey);
+        const recordDate = parseDate(
+          record.enrollment.dropout_date || record.enrollment.follow_up_date || record.enrollment.lead_date || record.enrollment.created_at,
+        );
+        const existingDate = existingRecord
+          ? parseDate(
+            existingRecord.enrollment.dropout_date
+            || existingRecord.enrollment.follow_up_date
+            || existingRecord.enrollment.lead_date
+            || existingRecord.enrollment.created_at,
+          )
+          : null;
+
+        if (!existingRecord || (recordDate?.getTime() || 0) >= (existingDate?.getTime() || 0)) {
+          dropoutRecordMap.set(recordKey, record);
+        }
       });
+
+    const dropoutRecords = [...dropoutRecordMap.values()].sort((left, right) => {
+      const rightDate = parseDate(right.enrollment.dropout_date || right.enrollment.follow_up_date || right.enrollment.lead_date || right.enrollment.created_at);
+      const leftDate = parseDate(left.enrollment.dropout_date || left.enrollment.follow_up_date || left.enrollment.lead_date || left.enrollment.created_at);
+      return (rightDate?.getTime() || 0) - (leftDate?.getTime() || 0);
+    });
 
     return {
       cards: [

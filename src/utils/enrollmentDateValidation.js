@@ -2,6 +2,7 @@ import { addDays, toIsoDate } from "./dateMath.js";
 
 export const ENQUIRY_FOLLOW_UP_INTERVAL_DAYS = 3;
 export const ENQUIRY_MAX_FOLLOW_UP_CYCLES = 2;
+export const ENQUIRY_AUTO_DROPOUT_DAYS = 7;
 
 function normalizeStageValue(stage = "") {
   const normalizedStage = String(stage || "").trim().toLowerCase().replace(/[^a-z]+/g, "");
@@ -41,6 +42,12 @@ export function getFinalEnquiryFollowUpDate(leadDate = "") {
   const normalizedLeadDate = toIsoDate(leadDate);
   if (!normalizedLeadDate) return "";
   return addDays(normalizedLeadDate, ENQUIRY_FOLLOW_UP_INTERVAL_DAYS * ENQUIRY_MAX_FOLLOW_UP_CYCLES);
+}
+
+export function getEnquiryAutoDropoutDate(leadDate = "") {
+  const normalizedLeadDate = toIsoDate(leadDate);
+  if (!normalizedLeadDate) return "";
+  return addDays(normalizedLeadDate, ENQUIRY_AUTO_DROPOUT_DAYS);
 }
 
 export function getNextEnquiryFollowUpDate({ leadDate = "", followUpDate = "" } = {}) {
@@ -101,12 +108,12 @@ export function shouldAutoDropoutEnquiry({
     return false;
   }
 
-  const autoDropoutDate = getFinalEnquiryFollowUpDate(leadDate) || getAutoDropoutDate(followUpDate);
+  const autoDropoutDate = getEnquiryAutoDropoutDate(leadDate) || getAutoDropoutDate(followUpDate);
   if (!autoDropoutDate) {
     return false;
   }
 
-  return compareIsoDates(autoDropoutDate, today) < 0;
+  return compareIsoDates(autoDropoutDate, today) <= 0;
 }
 
 export function getDerivedDropoutDate({
@@ -123,7 +130,7 @@ export function getDerivedDropoutDate({
   }
 
   if (shouldAutoDropoutEnquiry({ pipelineStage, leadDate, followUpDate, today })) {
-    return getFinalEnquiryFollowUpDate(leadDate) || normalizedFollowUpDate || "";
+    return getEnquiryAutoDropoutDate(leadDate) || normalizedFollowUpDate || "";
   }
 
   return "";

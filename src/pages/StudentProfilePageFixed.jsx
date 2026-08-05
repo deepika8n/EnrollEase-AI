@@ -198,11 +198,8 @@ export default function StudentProfilePageFixed() {
   const enrollment = record?.enrollment;
   const course = record?.course;
   const docs = record?.documents || [];
-  const paymentReceiptTypes = ["Payment Receipt", "Payment proof"];
   const studentPhotoUrl = student?.photo_url || docs.find((doc) => doc.document_type === "Student Photo")?.file_url || "";
   const aadhaarDocumentUrl = student?.aadhaar_document_url || docs.find((doc) => doc.document_type === "Aadhaar ID Photo")?.file_url || "";
-  const paymentReceiptDocument = docs.find((doc) => paymentReceiptTypes.includes(doc.document_type)) || null;
-  const paymentReceiptUrl = paymentReceiptDocument?.file_url || "";
   const emails = emailLogs.filter((item) => item.enrollment_id === enrollment?.id);
   const isPreEnrollment = Boolean(record?.isEnquiryRecord);
   const todayIsoDate = getTodayIsoDate();
@@ -632,7 +629,7 @@ export default function StudentProfilePageFixed() {
 
           <section className="panel p-6">
             <h2 className="section-title">Document previews</h2>
-            <div className="mt-6 grid gap-5 md:grid-cols-3">
+            <div className="mt-6 grid gap-5 md:grid-cols-2">
               <div className="flex h-full flex-col">
                 <p className="mb-3 min-h-[3.75rem] text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Student photo</p>
                 {studentPhotoUrl ? (
@@ -679,31 +676,6 @@ export default function StudentProfilePageFixed() {
                     src=""
                     alt="Aadhaar"
                     title="Aadhaar document"
-                    className="h-56 w-full flex-1 rounded-[28px] border border-slate-200 bg-slate-50"
-                  />
-                )}
-              </div>
-              <div className="flex h-full flex-col">
-                <p className="mb-3 min-h-[3.75rem] text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Payment receipt</p>
-                {paymentReceiptUrl ? (
-                  <button
-                    type="button"
-                    className="block w-full flex-1"
-                    onClick={() => setPreview({ src: paymentReceiptUrl, title: "Payment receipt", fileName: `${student.full_name}-payment-receipt` })}
-                  >
-                    <DocumentPreview
-                      src={paymentReceiptUrl}
-                      alt="Payment receipt"
-                      title="Payment receipt"
-                      fileName={`${student.full_name}-payment-receipt`}
-                      className="h-56 w-full rounded-[28px] border border-slate-200 bg-slate-50 object-cover"
-                    />
-                  </button>
-                ) : (
-                  <DocumentPreview
-                    src=""
-                    alt="Payment receipt"
-                    title="Payment receipt"
                     className="h-56 w-full flex-1 rounded-[28px] border border-slate-200 bg-slate-50"
                   />
                 )}

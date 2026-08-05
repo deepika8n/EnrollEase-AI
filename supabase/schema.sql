@@ -66,10 +66,21 @@ create table if not exists enrollments (
   verification_status text default 'Pending',
   remarks text,
   dropout_reason text,
+  student_form_status text default 'Not Sent',
+  student_form_token_hash text,
+  student_form_sent_at timestamptz,
+  student_form_expires_at timestamptz,
+  student_form_submitted_at timestamptz,
   last_payment_date date,
   payment_history jsonb default '[]'::jsonb,
   created_at timestamptz default now()
 );
+
+alter table public.enrollments add column if not exists student_form_status text default 'Not Sent';
+alter table public.enrollments add column if not exists student_form_token_hash text;
+alter table public.enrollments add column if not exists student_form_sent_at timestamptz;
+alter table public.enrollments add column if not exists student_form_expires_at timestamptz;
+alter table public.enrollments add column if not exists student_form_submitted_at timestamptz;
 
 create table if not exists documents (
   id uuid primary key default gen_random_uuid(),

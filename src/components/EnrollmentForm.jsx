@@ -23,7 +23,6 @@ const allowedImageMimeTypes = new Set(["image/png", "image/jpeg"]);
 const allowedAadhaarExtensions = [".png", ".jpg", ".jpeg", ".pdf"];
 const allowedAadhaarMimeTypes = new Set(["image/png", "image/jpeg", "application/pdf"]);
 const identifyingStudentFields = ["full_name", "email", "phone", "alternate_phone", "aadhaar_id", "guardian_phone"];
-const paymentReceiptTypes = ["Payment Receipt", "Payment proof"];
 
 function createBlankForm() {
   return {
@@ -82,10 +81,6 @@ function normalizeLookupValue(value) {
 function findDocumentPreview(record, documentTypes) {
   const types = Array.isArray(documentTypes) ? documentTypes : [documentTypes];
   return record?.documents?.find((item) => types.includes(item.document_type))?.file_url || "";
-}
-
-function findDocumentsByTypes(record, documentTypes) {
-  return (record?.documents || []).filter((item) => documentTypes.includes(item.document_type));
 }
 
 function calculateInstallmentAmount(totalFee, amountPaid, paymentPlan, installmentsPlanned) {
@@ -336,7 +331,6 @@ export default function EnrollmentForm({
   const [aadhaarPreview, setAadhaarPreview] = useState("");
   const [photoDocument, setPhotoDocument] = useState(null);
   const [aadhaarDocument, setAadhaarDocument] = useState(null);
-  const [paymentReceiptDocument, setPaymentReceiptDocument] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [duplicateCandidate, setDuplicateCandidate] = useState(null);
@@ -402,8 +396,6 @@ export default function EnrollmentForm({
     return lookups;
   }, [students]);
 
-  const existingPaymentReceiptDocument = useMemo(() => findDocumentsByTypes(convertRecord, paymentReceiptTypes)[0] || null, [convertRecord]);
-
   useEffect(() => {
     if (!isConvertMode) return;
 
@@ -415,7 +407,6 @@ export default function EnrollmentForm({
     setAadhaarPreview(convertRecord.student.aadhaar_document_url || findDocumentPreview(convertRecord, "Aadhaar ID Photo") || "");
     setPhotoDocument(null);
     setAadhaarDocument(null);
-    setPaymentReceiptDocument(null);
     setAadhaarVerificationNotice(null);
     setDuplicateCandidate(null);
     setSubmitError("");
@@ -429,7 +420,6 @@ export default function EnrollmentForm({
     setAadhaarPreview("");
     setPhotoDocument(null);
     setAadhaarDocument(null);
-    setPaymentReceiptDocument(null);
     setAadhaarVerificationNotice(null);
     setDuplicateCandidate(null);
     setSubmitError("");
@@ -589,23 +579,6 @@ export default function EnrollmentForm({
     }
   };
 
-  const handlePaymentReceiptChange = async (file) => {
-    if (!file) return;
-
-    try {
-      setSubmitError("");
-      assertAllowedFileType(file, "Payment receipt", {
-        mimeTypes: allowedImageMimeTypes,
-        extensions: allowedImageExtensions,
-        allowedLabel: "a PNG, JPG, or JPEG image",
-      });
-      const nextDocument = await buildSingleDocumentFromFile(file, "Payment Receipt", "Payment receipt upload");
-      setPaymentReceiptDocument(nextDocument);
-    } catch (error) {
-      setSubmitError(error.message || "Unable to upload payment receipt.");
-    }
-  };
-
   const handleSubmit = async (event) => {
     event.preventDefault();
     setSubmitError("");
@@ -638,9 +611,6 @@ export default function EnrollmentForm({
         if (!isImageSource(photoPreview)) {
           throw new Error("Student photo must be a PNG, JPG, or JPEG image.");
         }
-        if (paymentReceiptDocument?.file_url && !isImageSource(paymentReceiptDocument.file_url)) {
-          throw new Error("Payment receipt must be a PNG, JPG, or JPEG image.");
-        }
 
         aadhaarVerification = await verifyAadhaarDocument({
           documentSource: aadhaarDocument?.file_url || aadhaarPreview,
@@ -672,7 +642,6 @@ export default function EnrollmentForm({
         const totalFee = Number(form.total_fee || selectedCourse?.fee || 0);
         const amountPaid = Number(form.amount_paid || 0);
         const installmentsPlanned = Number(form.installments_planned || 0);
-        const hasPaymentReceipt = Boolean(paymentReceiptDocument?.file_url || existingPaymentReceiptDocument?.file_url);
 
         if (totalFee <= 0) {
           throw new Error("Total fee must be greater than 0 before completing enrollment.");
@@ -682,9 +651,6 @@ export default function EnrollmentForm({
         }
         if (remainingAmountValue < 0) {
           throw new Error("Remaining amount must never be negative.");
-        }
-        if (amountPaid > 0 && !hasPaymentReceipt) {
-          throw new Error("Payment receipt is required when amount paid is greater than zero.");
         }
         if (form.payment_plan === "One Time" && Number(form.installments_planned || 1) > 1) {
           throw new Error("Installments are not required for one-time payments.");
@@ -711,7 +677,6 @@ export default function EnrollmentForm({
               remarks: appendVerificationNote(aadhaarDocument.remarks, aadhaarVerification.status, aadhaarVerification.warning),
             }
             : null,
-          paymentReceiptDocument?.file_url ? paymentReceiptDocument : null,
         ].filter(Boolean);
         await convertEnquiryToEnrollment({
           enrollmentId: convertRecord.enrollment.id,
@@ -809,7 +774,6 @@ export default function EnrollmentForm({
         setAadhaarPreview("");
         setPhotoDocument(null);
         setAadhaarDocument(null);
-        setPaymentReceiptDocument(null);
         setDuplicateCandidate(null);
         setAadhaarVerificationNotice(null);
         setSubmitError("");
@@ -1129,7 +1093,7 @@ export default function EnrollmentForm({
 
             <section className="panel p-6">
               <h2 className="section-title">Document Uploads</h2>
-              <div className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+              <div className="mt-6 grid gap-5 md:grid-cols-2">
                 <div className="flex min-h-[22rem] flex-col rounded-[24px] border border-dashed border-slate-300 bg-slate-50 p-5">
                   <div>
                     <p className="font-semibold text-slate-900">Student photo</p>
@@ -1168,25 +1132,6 @@ export default function EnrollmentForm({
                     title="Aadhaar document"
                     enablePdfZoom
                     className="mt-4 min-h-[260px] w-full flex-1"
-                  />
-                </div>
-
-                <div className="flex min-h-[22rem] flex-col rounded-[24px] border border-dashed border-slate-300 bg-slate-50 p-5">
-                  <div>
-                    <p className="font-semibold text-slate-900">Payment receipt</p>
-                    <p className="mt-1 text-sm text-slate-500">Optional. Upload only PNG, JPG, or JPEG.</p>
-                  </div>
-                  <input
-                    type="file"
-                    accept={imageFileAccept}
-                    className="mt-4"
-                    onChange={(event) => handlePaymentReceiptChange(event.target.files?.[0])}
-                  />
-                  <DocumentPreview
-                    src={paymentReceiptDocument?.file_url || existingPaymentReceiptDocument?.file_url || ""}
-                    alt="Payment receipt preview"
-                    title="Payment receipt"
-                    className="mt-4 min-h-[220px] w-full flex-1 rounded-[24px] border border-slate-200 bg-white object-contain"
                   />
                 </div>
               </div>

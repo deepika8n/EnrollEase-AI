@@ -231,6 +231,7 @@ export default function EnquiriesPage() {
     deleteEnquiry,
     emailLogs,
     sendDashboardFollowUpEmail,
+    sendStudentEnrollmentForm,
     updateEnrollmentStatus,
   } = useApp();
   const navigate = useNavigate();
@@ -238,10 +239,33 @@ export default function EnquiriesPage() {
   const [uploading, setUploading] = useState(false);
   const [deletingId, setDeletingId] = useState("");
   const [followUpSendingId, setFollowUpSendingId] = useState("");
+  const [convertingId, setConvertingId] = useState("");
   const [dropoutId, setDropoutId] = useState("");
   const [selectedFollowUpId, setSelectedFollowUpId] = useState("");
   const [nameFilter, setNameFilter] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("all");
   const [statusClockMs, setStatusClockMs] = useState(() => Date.now());
+
+  const getEnquirySourceMeta = (record) => {
+    const leadSource = String(record?.student?.lead_source || "").trim().toLowerCase();
+    const hasReachableEmail = isValidStudentEmail(record?.student?.email || "");
+
+    if (leadSource === "public enquiry form") {
+      return { key: "app", label: "Enquired Through App" };
+    }
+    if (leadSource === "csv upload") {
+      return { key: "csv", label: "Imported From Excel" };
+    }
+    if (leadSource === "manual form") {
+      return hasReachableEmail
+        ? { key: "manual_email", label: "Admin Sent Form By Mail" }
+        : { key: "admin_only", label: "Admin Only Uploads" };
+    }
+
+    return hasReachableEmail
+      ? { key: "manual_email", label: "Admin Sent Form By Mail" }
+      : { key: "admin_only", label: "Admin Only Uploads" };
+  };
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -275,6 +299,11 @@ export default function EnquiriesPage() {
           return false;
         }
 
+        const sourceMeta = getEnquirySourceMeta(record);
+        if (sourceFilter !== "all" && sourceMeta.key !== sourceFilter) {
+          return false;
+        }
+
         const normalizedFilter = nameFilter.trim().toLowerCase();
         if (!normalizedFilter) {
           return true;
@@ -282,7 +311,7 @@ export default function EnquiriesPage() {
 
         return String(record.student.full_name || "").toLowerCase().includes(normalizedFilter);
       }),
-    [nameFilter, portalRecords],
+    [nameFilter, portalRecords, sourceFilter],
   );
 
   const selectedFollowUpRecord = enquiries.find((record) => record.enrollment.id === selectedFollowUpId) || null;
@@ -361,6 +390,17 @@ export default function EnquiriesPage() {
     }
   };
 
+  const handleSendStudentForm = async (record) => {
+    try {
+      setConvertingId(record.enrollment.id);
+      await sendStudentEnrollmentForm(record.enrollment.id);
+    } catch (error) {
+      window.alert(error.message || "Unable to send the student enrollment form right now.");
+    } finally {
+      setConvertingId("");
+    }
+  };
+
   return (
     <AppShell>
       <PageHeader
@@ -391,7 +431,7 @@ export default function EnquiriesPage() {
       />
 
       <section className="mb-4 flex items-center justify-between gap-3">
-        <div className="w-full max-w-sm">
+        <div className="grid w-full gap-3 md:max-w-4xl md:grid-cols-[minmax(0,1fr)_260px]">
           <input
             type="text"
             value={nameFilter}
@@ -400,6 +440,18 @@ export default function EnquiriesPage() {
             aria-label="Filter enquiries by student name"
             className="rounded-xl px-3 py-2.5 text-sm"
           />
+          <select
+            value={sourceFilter}
+            onChange={(event) => setSourceFilter(event.target.value)}
+            aria-label="Filter enquiries by source"
+            className="rounded-xl px-3 py-2.5 text-sm"
+          >
+            <option value="all">All enquiry sources</option>
+            <option value="app">Enquired through app</option>
+            <option value="manual_email">Admin sent form by mail</option>
+            <option value="csv">Imported from Excel</option>
+            <option value="admin_only">Admin only uploads</option>
+          </select>
         </div>
       </section>
 
@@ -411,6 +463,16 @@ export default function EnquiriesPage() {
               const initials = buildInitials(record.student.full_name);
               const followUpLogs = followUpLogsByEnrollment.get(record.enrollment.id) || [];
               const followUpMeta = getFollowUpMeta(record, followUpLogs, statusClockMs);
+              const studentFormStatus = String(record.enrollment.student_form_status || "Not Sent").trim() || "Not Sent";
+              const sourceMeta = getEnquirySourceMeta(record);
+              const studentFormLabel = studentFormStatus === "Sent"
+                ? `Enrollment form sent ${formatShortDate(record.enrollment.student_form_sent_at)}`
+                : studentFormStatus === "Submitted"
+                  ? `Submitted ${formatShortDate(record.enrollment.student_form_submitted_at)}`
+                  : studentFormStatus === "Pending"
+                    ? "Enrollment form preparing"
+                    : "Enrollment form not sent";
+              const convertButtonLabel = studentFormStatus === "Sent" ? "Resend Enrollment Form" : "Send Enrollment Form";
 
               return (
                 <>
@@ -468,9 +530,10 @@ export default function EnquiriesPage() {
                       <button
                         type="button"
                         className="button-primary px-3.5 py-2 text-sm"
-                        onClick={() => navigate(`/enrollment?convert=${record.enrollment.id}&from=enquiries`)}
+                        onClick={() => handleSendStudentForm(record)}
+                        disabled={convertingId === record.enrollment.id}
                       >
-                        Convert To Enrolled
+                        {convertingId === record.enrollment.id ? "Sending..." : convertButtonLabel}
                       </button>
                       <button
                         type="button"
@@ -492,9 +555,11 @@ export default function EnquiriesPage() {
                   </div>
 
                   <div className="mt-2.5 flex flex-wrap gap-4 border-t border-slate-100 pt-2.5 text-[10px] uppercase tracking-[0.18em] text-slate-400">
+                    <span>{sourceMeta.label}</span>
                     <span>{record.student.place}</span>
                     <span>{record.student.phone}</span>
                     <span>{formatShortDate(followUpMeta.nextFollowUpDate)}</span>
+                    <span>{studentFormLabel}</span>
                   </div>
                 </>
               );

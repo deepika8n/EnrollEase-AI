@@ -24,7 +24,7 @@ export default function TopBarAuth() {
 
   const handleLogout = async () => {
     await logout();
-    navigate("/login", { replace: true });
+    navigate("/admin-login", { replace: true });
   };
 
   return (

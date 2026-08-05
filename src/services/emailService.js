@@ -1,4 +1,4 @@
-import { triggerAutomation } from "./automationService";
+import { sendDirectEmail } from "./mailerService";
 import { generateEnrollmentPdfBlob } from "./pdfServiceFixed";
 import { toIsoDate } from "../utils/dateMath";
 import { inferPaymentPlan, isEmiPlan, resolveRemainingAmount, toNumberOrNull } from "../utils/paymentHelpers";
@@ -82,9 +82,8 @@ function buildCertisuredHeader({ title, subtitle = "" }) {
   `;
 }
 
-function buildFollowUpEmailHtml({ studentName, nextFollowUpDateLabel }) {
+function buildFollowUpEmailHtml({ studentName }) {
   const safeStudentName = escapeHtml(studentName || "Student");
-  const safeNextFollowUpDate = escapeHtml(nextFollowUpDateLabel || "");
 
   return `
     <div style="margin:0;padding:24px;background:#eef4fb;font-family:'Plus Jakarta Sans',Arial,sans-serif;color:#10233c;">
@@ -140,7 +139,7 @@ function buildFollowUpEmailHtml({ studentName, nextFollowUpDateLabel }) {
   `;
 }
 
-function buildFollowUpEmailText({ studentName, nextFollowUpDateLabel }) {
+function buildFollowUpEmailText({ studentName }) {
   return `Dear ${studentName || "Student"},
 
 We hope you are doing well.
@@ -226,6 +225,88 @@ If you have any questions about admission, documents, schedule, or payments, sim
 
 Regards,
 CERTISURED Team`;
+}
+
+export function buildStudentIntakeInviteEmail({
+  studentName,
+  courseName,
+  batchName,
+  formUrl,
+  expiryLabel,
+}) {
+  const safeStudentName = escapeHtml(studentName || "Student");
+  const safeCourseName = escapeHtml(courseName || "Selected Course");
+  const safeBatchName = escapeHtml(batchName || "Batch details will be confirmed by the admissions team");
+  const safeFormUrl = escapeHtml(formUrl || "");
+  const safeExpiryLabel = escapeHtml(expiryLabel || "the next 7 days");
+
+  return {
+    subject: "Complete Your Enrollment Form - CERTISURED",
+    html: `
+      <div style="margin:0;padding:24px;background:#eef4fb;font-family:'Plus Jakarta Sans',Arial,sans-serif;color:#10233c;">
+        <div style="max-width:680px;margin:0 auto;background:#ffffff;border:1px solid #dbe8f7;border-radius:28px;overflow:hidden;box-shadow:0 22px 50px rgba(15,23,42,0.08);">
+          ${buildCertisuredHeader({ title: "Complete Your Enrollment", subtitle: "Student Form" })}
+          <div style="padding:32px;">
+            <p style="margin:0;font-size:16px;line-height:1.8;">Dear ${safeStudentName},</p>
+            <p style="margin:18px 0 0;font-size:15px;line-height:1.85;color:#42556d;">
+              Your enquiry has been shortlisted for admission at <strong>CERTISURED</strong>.
+            </p>
+            <p style="margin:14px 0 0;font-size:15px;line-height:1.85;color:#42556d;">
+              Please complete your student enrollment form so our admissions team can finish your profile and move your application forward.
+            </p>
+
+            <div style="margin-top:24px;padding:22px 24px;border-radius:22px;background:#f8fbff;border:1px solid #dce9f7;">
+              <p style="margin:0 0 14px;font-size:14px;font-weight:700;color:#163459;">Enrollment summary</p>
+              <div style="font-size:15px;line-height:1.9;color:#42556d;">
+                <strong>Course:</strong> ${safeCourseName}<br />
+                <strong>Batch:</strong> ${safeBatchName}<br />
+                <strong>Form link valid until:</strong> ${safeExpiryLabel}
+              </div>
+            </div>
+
+            <div style="margin-top:26px;">
+              <a href="${safeFormUrl}" style="display:inline-block;padding:14px 24px;border-radius:16px;background:#16a34a;color:#ffffff;text-decoration:none;font-size:14px;font-weight:800;letter-spacing:0.04em;">
+                Open Enrollment Form
+              </a>
+            </div>
+
+            <p style="margin:18px 0 0;font-size:14px;line-height:1.8;color:#64748b;">
+              If the button does not open, copy and paste this link into your browser:<br />
+              <span style="word-break:break-all;color:#1d5ea8;">${safeFormUrl}</span>
+            </p>
+
+            <div style="margin-top:24px;padding:18px 20px;border-radius:20px;background:#fffaf0;border:1px solid #fde7b0;color:#7b5a06;font-size:14px;line-height:1.8;">
+              Please keep your Aadhaar document and a passport-style photo ready before you start.
+            </div>
+
+            <div style="margin-top:28px;padding-top:22px;border-top:1px solid #e4edf6;">
+              <p style="margin:0;font-size:15px;line-height:1.85;color:#10233c;">
+                Regards,<br />
+                <strong>CERTISURED Admissions Team</strong>
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    `,
+    text: `Dear ${studentName || "Student"},
+
+Your enquiry has been shortlisted for admission at CERTISURED.
+
+Please complete your student enrollment form so our admissions team can finish your profile.
+
+Course: ${courseName || "Selected Course"}
+Batch: ${batchName || "Batch details will be confirmed by the admissions team"}
+Form link valid until: ${expiryLabel || "the next 7 days"}
+
+Open the enrollment form:
+${formUrl || ""}
+
+Please keep your Aadhaar document and a passport-style photo ready before you start.
+
+Regards,
+CERTISURED Admissions Team`,
+  };
 }
 
 function buildAdmissionConfirmationEmailHtml({
@@ -567,6 +648,10 @@ CERTISURED`;
 export async function sendEmailTrigger(emailType, enrollment, options = {}) {
   const student = options.student || {};
   const genericConfig = resolveGenericEmailConfig(emailType, enrollment, options);
+  const resolvedSubject = options.subject || genericConfig.subject;
+  const resolvedHtml = options.html || genericConfig.html;
+  const resolvedText = options.text || genericConfig.text;
+  const sentAt = options.sentAt || new Date().toISOString();
   const attachments = shouldAttachStudentProfilePdf(emailType, options)
     ? [await buildStudentProfilePdfAttachment({
       student,
@@ -576,104 +661,71 @@ export async function sendEmailTrigger(emailType, enrollment, options = {}) {
       instituteName: options.instituteName || "CERTISURED",
     })]
     : [];
-  const automationPayload = {
-    ...buildEmailAutomationPayload({
-      agentType: genericConfig.agentType,
-      actionType: genericConfig.actionType,
-      templateKey: genericConfig.templateKey,
-      emailType,
-      subject: genericConfig.subject,
-      html: genericConfig.html,
-      text: genericConfig.text,
-      enrollment,
-      student,
-      course: options.course || enrollment.course_name || "",
-      currentStage: options.currentStage || enrollment.pipeline_stage || "",
+  try {
+    await sendDirectEmail({
+      to: normalizeEmailAddress(student?.email || ""),
+      subject: resolvedSubject,
+      html: resolvedHtml,
+      text: resolvedText,
       attachments,
-    }),
-    student: {
-      id: student?.id || "",
-      full_name: student?.full_name || student?.name || "",
-      email: student?.email || "",
-      phone: student?.phone || "",
-    },
-  };
-  const automationResult = await triggerAutomation("email_notification", automationPayload, {
-    event: genericConfig.event,
-    agentType: genericConfig.agentType,
-    actionType: genericConfig.actionType,
-  });
+      enrollment_id: enrollment?.id || "",
+      email_type: options.logType || emailType,
+      sent_at: sentAt,
+    });
 
-  if (!automationResult.success) {
+    return {
+      ok: true,
+      status: "Sent",
+      logged: true,
+      message: `Email sent for "${emailType}".`,
+    };
+  } catch (error) {
     return {
       ok: false,
       status: "Failed",
-      message: automationResult.message || `Unable to trigger "${emailType}".`,
-      automationResult,
+      logged: Boolean(error?.logged),
+      message: error?.message || `Unable to send "${emailType}".`,
     };
   }
-
-  return {
-    ok: true,
-    status: "Queued",
-    message: `Email trigger executed for "${emailType}" and enrollment ${enrollment.id}.`,
-    automationResult,
-  };
 }
 
 export async function sendAdmissionFollowUpEmail({ enrollment, student, sentAt, nextFollowUpDate, nextFollowUpDateLabel }) {
   const subject = "Admission Follow-up";
   const html = buildFollowUpEmailHtml({
-    studentName: student?.full_name,
-    nextFollowUpDateLabel,
+      studentName: student?.full_name,
   });
   const text = buildFollowUpEmailText({
-    studentName: student?.full_name,
-    nextFollowUpDateLabel,
+      studentName: student?.full_name,
   });
 
-  const automationPayload = buildEmailAutomationPayload({
-    agentType: "follow_up_agent",
-    actionType: "send_follow_up_email",
-    templateKey: "admission_follow_up",
-    emailType: subject,
-    subject,
-    html,
-    text,
-    enrollment,
-    student,
-    course: enrollment?.course_name || "",
-    currentStage: enrollment?.pipeline_stage || "",
-    metadata: {
-      sentAt,
-      nextFollowUpDate,
-      nextFollowUpDateLabel,
-    },
-  });
-  const automationResult = await triggerAutomation("email_notification", automationPayload, {
-    event: "email.follow_up",
-    agentType: "follow_up_agent",
-    actionType: "send_follow_up_email",
-  });
+  try {
+    await sendDirectEmail({
+      to: normalizeEmailAddress(student?.email || ""),
+      subject,
+      html,
+      text,
+      enrollment_id: enrollment?.id || "",
+      email_type: "Admission Follow-up",
+      sent_at: sentAt || new Date().toISOString(),
+    });
 
-  if (automationResult.success === false) {
+    return {
+      ok: true,
+      status: "Sent",
+      logged: true,
+      subject,
+      html,
+      text,
+      message: "Follow-up email sent successfully.",
+    };
+  } catch (error) {
     return {
       ok: false,
       status: "Failed",
-      message: automationResult.message || "Follow-up email could not be sent.",
-      automationResult,
+      logged: Boolean(error?.logged),
+      message: error?.message || "Follow-up email could not be sent.",
     };
   }
-
-  return {
-    ok: true,
-    status: "Queued",
-    subject,
-    html,
-    text,
-    message: "Follow-up email queued successfully.",
-    automationResult,
-  };
 }
 
 export async function sendPaymentStatusEmail({
@@ -729,50 +781,36 @@ export async function sendPaymentStatusEmail({
     relatedCourses,
     emailVariant,
   });
+  const sentAt = new Date().toISOString();
+  const logType = emailVariant === "due_reminder" ? "EMI Due Reminder" : "Payment Update";
 
-  const automationPayload = buildEmailAutomationPayload({
-    agentType: "payment_agent",
-    actionType: emailVariant === "due_reminder" ? "send_payment_reminder_email" : "send_payment_update_email",
-    templateKey: emailVariant === "due_reminder" ? "payment_reminder" : "payment_update",
-    emailType: subject,
-    subject,
-    html,
-    text,
-    enrollment,
-    student,
-    course: course || enrollment?.course_name || "",
-    currentStage: enrollment?.pipeline_stage || "",
-    metadata: {
-      relatedCourses,
-      emailVariant,
-      isCleared,
-      paidAmount: normalizedPaidAmount,
-      paymentDate: paymentDate || enrollment?.last_payment_date || "",
-      remainingAmount,
-      nextDueDate: enrollment?.next_due_date || "",
-    },
-  });
-  const automationResult = await triggerAutomation("email_notification", automationPayload, {
-    event: emailVariant === "due_reminder" ? "email.payment_reminder" : "email.payment_update",
-    agentType: "payment_agent",
-    actionType: emailVariant === "due_reminder" ? "send_payment_reminder_email" : "send_payment_update_email",
-  });
+  try {
+    await sendDirectEmail({
+      to: normalizeEmailAddress(student?.email || ""),
+      subject,
+      html,
+      text,
+      enrollment_id: enrollment?.id || "",
+      email_type: logType,
+      sent_at: sentAt,
+    });
 
-  if (!automationResult.success) {
+    return {
+      ok: true,
+      status: "Sent",
+      logged: true,
+      message: "Payment email sent successfully.",
+      subject,
+      sentAt,
+    };
+  } catch (error) {
     return {
       ok: false,
       status: "Failed",
-      message: automationResult.message || "Payment email could not be sent.",
-      automationResult,
+      logged: Boolean(error?.logged),
+      message: error?.message || "Payment email could not be sent.",
       subject,
+      sentAt,
     };
   }
-
-  return {
-    ok: true,
-    status: "Queued",
-    message: "Payment email queued successfully.",
-    automationResult,
-    subject,
-  };
 }

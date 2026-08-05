@@ -15,8 +15,8 @@ Educational organizations often manage admissions across forms, spreadsheets, fi
 - Enrollment records table with search, filters, and action buttons
 - Student profile page with documents, timeline, and PDF generation
 - Verification panel for approval, rejection, corrections, and workflow progression
-- n8n webhook-ready automation service for payment and follow-up emails
-- Optional Supabase server-side automation dispatcher for unattended email runs
+- Native Supabase email and automation flow for enquiry, follow-up, and enrollment communication
+- Optional Supabase server-side automation dispatcher for unattended follow-up and payment reminder runs
 - Sample data for courses, enrollments, documents, and email logs
 
 ## Tech Stack
@@ -27,7 +27,7 @@ Educational organizations often manage admissions across forms, spreadsheets, fi
 - Authentication: Supabase Auth ready structure
 - Storage: Supabase Storage ready helpers
 - PDF Generation: jsPDF
-- Automation: n8n webhook service
+- Automation: Supabase Edge Functions + scheduled dispatch
 - Hosting: Vercel compatible
 
 ## Project Structure
@@ -63,10 +63,16 @@ Required environment variables:
 
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
+- `VITE_PUBLIC_APP_URL` set this to your real deployed app URL so student enrollment form links open on mobile and outside your laptop
 - `VITE_AI_API_KEY` optional
-- `VITE_N8N_WEBHOOK_URL` optional
-- `VITE_N8N_WEBHOOK_SECRET` optional but recommended for n8n webhook validation
 - `VITE_SERVER_SIDE_AUTOMATIONS` optional, set to `true` after the Supabase cron dispatcher is deployed
+
+Supabase Edge Function secrets required for email delivery:
+
+- `MAIL_FROM_EMAIL`
+- `ADMIN_NOTIFICATION_EMAIL`
+- either `RESEND_API_KEY`
+- or `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`
 
 For unattended automation setup, use:
 
@@ -87,7 +93,7 @@ The app is local-first by default. If Supabase environment variables are missing
 - Live row-level security policies per role
 - Real document upload to Supabase Storage with previews
 - LLM-backed conversational agent using `VITE_AI_API_KEY`
-- n8n workflow orchestration for PDF, email, and admin alerts
+- Extended automation rules for PDF, email, and admin alerts
 - Analytics dashboards and downloadable reports
 - WhatsApp and SMS notification triggers
 
