@@ -3,6 +3,7 @@ import { sendEmail } from "../_shared/email.ts";
 
 const ENQUIRY_FOLLOW_UP_INTERVAL_DAYS = 3;
 const ENQUIRY_MAX_FOLLOW_UP_CYCLES = 2;
+const CANONICAL_PUBLIC_APP_URL = "https://enroll-ease-ai.vercel.app";
 const ENQUIRY_AUTO_DROPOUT_DAYS = 7;
 const INDIA_TIMEZONE = "Asia/Kolkata";
 const JSON_HEADERS = { "Content-Type": "application/json" };
@@ -344,13 +345,13 @@ function resolvePublicAppOrigin() {
     || Deno.env.get("SITE_URL")
     || Deno.env.get("APP_URL")
     || Deno.env.get("VITE_PUBLIC_APP_URL")
-    || "",
+    || CANONICAL_PUBLIC_APP_URL,
   ).trim();
   const trimmedOrigin = configuredOrigin.replace(/\/+$/, "");
   if (trimmedOrigin === "https://enrollease-ai.vercel.app") {
-    return "https://enroll-ease-ai.vercel.app";
+    return CANONICAL_PUBLIC_APP_URL;
   }
-  return trimmedOrigin;
+  return trimmedOrigin || CANONICAL_PUBLIC_APP_URL;
 }
 
 function buildStudentIntakeUrl(origin = "", enrollmentId = "", token = "") {
