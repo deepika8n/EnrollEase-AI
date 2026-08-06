@@ -17,6 +17,7 @@ Educational organizations often manage admissions across forms, spreadsheets, fi
 - Verification panel for approval, rejection, corrections, and workflow progression
 - Native Supabase email and automation flow for enquiry, follow-up, and enrollment communication
 - Optional Supabase server-side automation dispatcher for unattended follow-up and payment reminder runs
+- Admissions Copilot workspace for AI-guided summaries, next steps, follow-up drafts, and priority review
 - Sample data for courses, enrollments, documents, and email logs
 
 ## Tech Stack
@@ -65,6 +66,7 @@ Required environment variables:
 - `VITE_SUPABASE_ANON_KEY`
 - `VITE_PUBLIC_APP_URL` set this to your real deployed app URL so student enrollment form links open on mobile and outside your laptop
 - `VITE_AI_API_KEY` optional
+- `VITE_AI_MODEL` optional, defaults to `gpt-4o-mini`
 - `VITE_SERVER_SIDE_AUTOMATIONS` optional, set to `true` after the Supabase cron dispatcher is deployed
 
 Supabase Edge Function secrets required for email delivery:

@@ -281,11 +281,77 @@ export function resolveLastPaymentDate({
   return "";
 }
 
+export function getCurrentEmiCycleDueDate({
+  enrolledDate = "",
+  today = "",
+} = {}) {
+  const normalizedEnrolledDate = toIsoDate(enrolledDate);
+  const normalizedToday = toIsoDate(today || new Date());
+  if (!normalizedEnrolledDate || !normalizedToday) {
+    return "";
+  }
+
+  if (normalizedToday <= normalizedEnrolledDate) {
+    return normalizedEnrolledDate;
+  }
+
+  let cycleDueDate = normalizedEnrolledDate;
+  let nextCycleDueDate = addMonthsPreservingDay(cycleDueDate, 1);
+
+  while (nextCycleDueDate && nextCycleDueDate <= normalizedToday) {
+    cycleDueDate = nextCycleDueDate;
+    nextCycleDueDate = addMonthsPreservingDay(cycleDueDate, 1);
+  }
+
+  return cycleDueDate;
+}
+
+export function getEmiReminderWindow({
+  enrolledDate = "",
+  today = "",
+} = {}) {
+  const normalizedToday = toIsoDate(today || new Date());
+  const cycleDueDate = getCurrentEmiCycleDueDate({
+    enrolledDate,
+    today: normalizedToday,
+  });
+  if (!cycleDueDate || !normalizedToday) {
+    return {
+      cycleDueDate: "",
+      reminderStartDate: "",
+      reminderEndDate: "",
+      nextCycleDueDate: "",
+      checklistDate: "",
+      isReminderDueToday: false,
+    };
+  }
+
+  const reminderEndDate = toIsoDate(new Date(new Date(cycleDueDate).setDate(new Date(cycleDueDate).getDate() + 3)));
+  const nextCycleDueDate = addMonthsPreservingDay(cycleDueDate, 1);
+  const isReminderDueToday = normalizedToday >= cycleDueDate && normalizedToday <= reminderEndDate;
+  const checklistDate = isReminderDueToday
+    ? normalizedToday
+    : normalizedToday < cycleDueDate
+      ? cycleDueDate
+      : nextCycleDueDate;
+
+  return {
+    cycleDueDate,
+    reminderStartDate: cycleDueDate,
+    reminderEndDate,
+    nextCycleDueDate,
+    checklistDate,
+    isReminderDueToday,
+  };
+}
+
 export function resolveNextDueDate({
   paymentStatus = "",
   paymentPlan = "",
   lastPaymentDate = "",
   history = [],
+  enrolledDate = "",
+  today = "",
   fallbackDate = "",
 } = {}) {
   if (String(paymentStatus || "").trim() === "Paid") {
@@ -300,9 +366,26 @@ export function resolveNextDueDate({
     return "";
   }
 
-  const anchorDate = resolveLastPaymentDate({
+  const reminderWindow = getEmiReminderWindow({
+    enrolledDate: enrolledDate || fallbackDate || resolveLastPaymentDate({
+      lastPaymentDate,
+      history,
+    }),
+    today,
+  });
+  const latestPaymentDate = resolveLastPaymentDate({
     lastPaymentDate,
     history,
+    enrolledDate,
   });
-  return anchorDate ? addMonthsPreservingDay(anchorDate, 1) : "";
+
+  if (
+    latestPaymentDate
+    && reminderWindow.cycleDueDate
+    && latestPaymentDate >= reminderWindow.cycleDueDate
+  ) {
+    return reminderWindow.nextCycleDueDate || "";
+  }
+
+  return reminderWindow.checklistDate || "";
 }

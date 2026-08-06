@@ -118,6 +118,19 @@ function addDays(isoDate = "", days = 0) {
   return nextDate.toISOString().slice(0, 10);
 }
 
+function addMonthsPreservingDay(isoDate = "", months = 1) {
+  const baseDate = parseDate(isoDate);
+  if (!baseDate) return "";
+
+  const baseDay = baseDate.getDate();
+  const targetMonthIndex = baseDate.getMonth() + months;
+  const targetYear = baseDate.getFullYear() + Math.floor(targetMonthIndex / 12);
+  const normalizedTargetMonth = ((targetMonthIndex % 12) + 12) % 12;
+  const lastDayOfTargetMonth = new Date(targetYear, normalizedTargetMonth + 1, 0).getDate();
+  const nextDate = new Date(targetYear, normalizedTargetMonth, Math.min(baseDay, lastDayOfTargetMonth));
+  return toIsoDate(nextDate);
+}
+
 function compareIsoDates(leftValue: string | null | undefined, rightValue: string | null | undefined) {
   const left = toIsoDate(leftValue);
   const right = toIsoDate(rightValue);
@@ -277,6 +290,78 @@ function hasSuccessfulEmailOnOrAfter(
   return getEnrollmentLogs(emailLogs, enrollmentId, matcher).some((log) => {
     return compareIsoDates(log.sent_at || "", normalizedStartDate) >= 0;
   });
+}
+
+function hasSuccessfulEmailOnDate(
+  emailLogs: EmailLogRecord[],
+  enrollmentId = "",
+  matcher: (log: EmailLogRecord) => boolean = () => true,
+  targetDate = "",
+) {
+  const normalizedTargetDate = toIsoDate(targetDate);
+  if (!normalizedTargetDate) {
+    return false;
+  }
+
+  return getEnrollmentLogs(emailLogs, enrollmentId, matcher).some((log) => {
+    return String(log.status || "").trim().toLowerCase() === "sent"
+      && toIsoDate(log.sent_at || "") === normalizedTargetDate;
+  });
+}
+
+function getCurrentEmiCycleDueDate(enrolledDate = "", today = getTodayIsoDate()) {
+  const normalizedEnrolledDate = toIsoDate(enrolledDate);
+  const normalizedToday = toIsoDate(today);
+  if (!normalizedEnrolledDate || !normalizedToday) {
+    return "";
+  }
+
+  if (compareIsoDates(normalizedToday, normalizedEnrolledDate) <= 0) {
+    return normalizedEnrolledDate;
+  }
+
+  let cycleDueDate = normalizedEnrolledDate;
+  let nextCycleDueDate = addMonthsPreservingDay(cycleDueDate, 1);
+
+  while (nextCycleDueDate && compareIsoDates(nextCycleDueDate, normalizedToday) <= 0) {
+    cycleDueDate = nextCycleDueDate;
+    nextCycleDueDate = addMonthsPreservingDay(cycleDueDate, 1);
+  }
+
+  return cycleDueDate;
+}
+
+function getEmiReminderWindow(enrolledDate = "", today = getTodayIsoDate()) {
+  const normalizedToday = toIsoDate(today);
+  const cycleDueDate = getCurrentEmiCycleDueDate(enrolledDate, normalizedToday);
+  if (!cycleDueDate || !normalizedToday) {
+    return {
+      cycleDueDate: "",
+      reminderEndDate: "",
+      nextCycleDueDate: "",
+      checklistDate: "",
+      isReminderDueToday: false,
+    };
+  }
+
+  const reminderEndDate = addDays(cycleDueDate, 3);
+  const nextCycleDueDate = addMonthsPreservingDay(cycleDueDate, 1);
+  const isReminderDueToday =
+    compareIsoDates(normalizedToday, cycleDueDate) >= 0
+    && compareIsoDates(normalizedToday, reminderEndDate) <= 0;
+  const checklistDate = isReminderDueToday
+    ? normalizedToday
+    : compareIsoDates(normalizedToday, cycleDueDate) < 0
+      ? cycleDueDate
+      : nextCycleDueDate;
+
+  return {
+    cycleDueDate,
+    reminderEndDate,
+    nextCycleDueDate,
+    checklistDate,
+    isReminderDueToday,
+  };
 }
 
 function hasFailureLogToday(emailLogs: EmailLogRecord[], enrollmentId = "", emailType = "", today = getTodayIsoDate()) {
@@ -1286,14 +1371,15 @@ Deno.serve(async (request) => {
         }
       }
 
-      const nextDueDate = toIsoDate(enrollment.next_due_date || "");
+      const reminderWindow = getEmiReminderWindow(enrollment.enrolled_date || enrollment.lead_date || "", todayIsoDate);
+      const nextDueDate = reminderWindow.checklistDate || toIsoDate(enrollment.next_due_date || "");
       const remainingAmount = resolveRemainingAmount(enrollment.total_fee, enrollment.amount_paid) ?? 0;
       if (
         nextDueDate
-        && compareIsoDates(nextDueDate, todayIsoDate) <= 0
+        && reminderWindow.isReminderDueToday
         && remainingAmount > 0
         && String(enrollment.payment_status || "").trim() !== "Paid"
-        && !hasSuccessfulEmailOnOrAfter(emailLogs, enrollment.id, isPaymentReminderEmailLog, nextDueDate)
+        && !hasSuccessfulEmailOnDate(emailLogs, enrollment.id, isPaymentReminderEmailLog, todayIsoDate)
       ) {
         await dispatchOne({
           enrollment,

@@ -24,6 +24,7 @@ import {
   getLatestPaymentEntry,
   inferPaymentPlan,
   isEmiEnrollment,
+  getEmiReminderWindow,
   normalizePaymentHistoryList,
   resolveAmountPaid,
   resolveLastPaymentDate,
@@ -37,6 +38,7 @@ const LOCAL_DB_KEY = "enrollease-demo-db-v3";
 const LOCAL_SESSION_KEY = "enrollease-demo-session-v3";
 const SUPABASE_SHADOW_KEY = "enrollease-supabase-shadow-v2";
 const REMOTE_STATE_CACHE_KEY = "enrollease-remote-state-v3";
+const PAYMENT_REMINDER_LOCK_KEY = "enrollease-payment-reminder-locks-v1";
 const LEGACY_BROWSER_CACHE_KEYS = [
   "enrollease-remote-state-v1",
   "enrollease-remote-state-v2",
@@ -669,6 +671,73 @@ function dedupeRecordsById(records = []) {
   });
 }
 
+function normalizePortalIdentityValue(value = "") {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function getPortalStudentIdentityKey(student = {}, enrollment = {}) {
+  return (
+    student?.id
+    || normalizePortalIdentityValue(student?.email)
+    || normalizePortalIdentityValue(student?.phone)
+    || normalizePortalIdentityValue(student?.full_name)
+    || enrollment?.student_id
+    || enrollment?.id
+    || ""
+  );
+}
+
+function getPortalRecordStageRank(record) {
+  if (record?.isEnrolledRecord) return 3;
+  if (record?.isEnquiryRecord) return 2;
+  if (record?.isDropoutRecord) return 1;
+  return 0;
+}
+
+function getPortalRecordTimestamp(record) {
+  const value =
+    record?.enrollment?.dropout_date
+    || record?.enrollment?.enrolled_date
+    || record?.enrollment?.follow_up_date
+    || record?.enrollment?.lead_date
+    || record?.enrollment?.created_at
+    || "";
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function collapsePortalRecordsToCurrent(records = []) {
+  const currentRecordByStudent = new Map();
+
+  records.forEach((record) => {
+    const recordKey = getPortalStudentIdentityKey(record?.student, record?.enrollment);
+    if (!recordKey) {
+      return;
+    }
+
+    const existingRecord = currentRecordByStudent.get(recordKey);
+    if (!existingRecord) {
+      currentRecordByStudent.set(recordKey, record);
+      return;
+    }
+
+    const recordStageRank = getPortalRecordStageRank(record);
+    const existingStageRank = getPortalRecordStageRank(existingRecord);
+    const recordTimestamp = getPortalRecordTimestamp(record);
+    const existingTimestamp = getPortalRecordTimestamp(existingRecord);
+
+    const shouldPreferRecord = recordStageRank > existingStageRank
+      || (recordStageRank === existingStageRank && recordTimestamp >= existingTimestamp);
+
+    if (shouldPreferRecord) {
+      currentRecordByStudent.set(recordKey, record);
+    }
+  });
+
+  return [...currentRecordByStudent.values()]
+    .sort((left, right) => getPortalRecordTimestamp(right) - getPortalRecordTimestamp(left));
+}
+
 function clearLocalSession() {
   window.localStorage.removeItem(LOCAL_SESSION_KEY);
 }
@@ -678,6 +747,48 @@ function clearSupabaseModeLocalData() {
 
   window.localStorage.removeItem(LOCAL_DB_KEY);
   window.localStorage.removeItem(SUPABASE_SHADOW_KEY);
+  window.localStorage.removeItem(PAYMENT_REMINDER_LOCK_KEY);
+}
+
+function readPaymentReminderLocks() {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(PAYMENT_REMINDER_LOCK_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writePaymentReminderLocks(locks = {}) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(PAYMENT_REMINDER_LOCK_KEY, JSON.stringify(locks));
+  } catch {
+    // Ignore localStorage write issues and fall back to in-memory protection.
+  }
+}
+
+function hasPaymentReminderLock(enrollmentId = "", reminderDate = "") {
+  const key = `${enrollmentId}:${reminderDate}`;
+  return Boolean(readPaymentReminderLocks()[key]);
+}
+
+function setPaymentReminderLock(enrollmentId = "", reminderDate = "") {
+  if (!enrollmentId || !reminderDate) return;
+  const key = `${enrollmentId}:${reminderDate}`;
+  const locks = readPaymentReminderLocks();
+  locks[key] = true;
+  writePaymentReminderLocks(locks);
+}
+
+function clearPaymentReminderLock(enrollmentId = "", reminderDate = "") {
+  if (!enrollmentId || !reminderDate) return;
+  const key = `${enrollmentId}:${reminderDate}`;
+  const locks = readPaymentReminderLocks();
+  delete locks[key];
+  writePaymentReminderLocks(locks);
 }
 
 function hasLinkedPortalRecords(students = [], enrollments = []) {
@@ -1190,6 +1301,28 @@ function hasSuccessfulEmailOnOrAfter(emailLogs = [], enrollmentId = "", matcher 
     .some((log) => compareIsoDates(log?.sent_at || "", normalizedStartDate) >= 0);
 }
 
+function hasSuccessfulEmailOnDate(emailLogs = [], enrollmentId = "", matcher = () => true, targetDate = "") {
+  const normalizedTargetDate = toIsoDate(targetDate);
+  if (!normalizedTargetDate) {
+    return false;
+  }
+
+  return getSuccessfulEnrollmentEmailLogs(emailLogs, enrollmentId, matcher)
+    .some((log) => toIsoDate(log?.sent_at || "") === normalizedTargetDate);
+}
+
+function hasEmailLogOnDate(emailLogs = [], enrollmentId = "", matcher = () => true, targetDate = "") {
+  const normalizedTargetDate = toIsoDate(targetDate);
+  if (!normalizedTargetDate) {
+    return false;
+  }
+
+  return emailLogs
+    .filter((log) => log?.enrollment_id === enrollmentId)
+    .filter((log) => matcher(log))
+    .some((log) => toIsoDate(log?.sent_at || "") === normalizedTargetDate);
+}
+
 function getSuccessfulFollowUpCount(emailLogs = [], enrollmentId = "") {
   return getSuccessfulEnrollmentEmailLogs(emailLogs, enrollmentId, isFollowUpEmailLog).length;
 }
@@ -1418,6 +1551,8 @@ function normalizeEnrollmentForDisplay(enrollment, course) {
       paymentStatus,
       paymentPlan,
       lastPaymentDate,
+      enrolledDate,
+      today: getTodayIsoDate(),
       history: paymentHistory,
     })
     : "";
@@ -1515,6 +1650,8 @@ function buildRecordedPaymentState(enrollment, paymentMode = "UPI") {
       paymentStatus: nextStatus,
       paymentPlan: enrollment?.payment_plan || "",
       lastPaymentDate: paymentDate,
+      enrolledDate: enrollment?.enrolled_date || enrollment?.lead_date || "",
+      today: getTodayIsoDate(),
       history: [nextPaymentEntry, ...existingPaymentHistory],
     }),
     payment_history: [nextPaymentEntry, ...existingPaymentHistory],
@@ -1672,22 +1809,11 @@ function toPortalRecords(students, enrollments, courses, documents) {
 }
 
 function buildDashboardMetrics(records) {
-  const getStudentMetricKey = (record) => (
-    record.student?.id
-    || String(record.student?.full_name || "").trim().toLowerCase()
-    || record.enrollment?.id
-    || record.id
-  );
   const totalRecords = records.length;
   const pending = records.filter((record) => record.isEnquiryRecord).length;
-  const totalEnquiries = new Set(records.map((record) => record.student?.id).filter(Boolean)).size;
+  const totalEnquiries = totalRecords;
   const totalEnrolled = records.filter((record) => record.isEnrolledRecord).length;
-  const totalDropouts = new Set(
-    records
-      .filter((record) => record.isDropoutRecord)
-      .map((record) => getStudentMetricKey(record))
-      .filter(Boolean),
-  ).size;
+  const totalDropouts = records.filter((record) => record.isDropoutRecord).length;
   const conversionRate = totalEnquiries ? Math.round((totalEnrolled / totalEnquiries) * 100) : 0;
   const emiStudents = records.filter((record) => isEmiEnrollment(record.enrollment) && record.paymentEligible).length;
   const clearedPayments = records.filter((record) => record.enrollment.payment_status === "Paid").length;
@@ -3276,6 +3402,8 @@ export function AppProvider({ children }) {
       paymentStatus,
       paymentPlan,
       lastPaymentDate,
+      enrolledDate,
+      today: getTodayIsoDate(),
       history: paymentHistory,
     });
     const normalizedPatch = {
@@ -3687,6 +3815,8 @@ export function AppProvider({ children }) {
               paymentStatus,
               paymentPlan,
               lastPaymentDate,
+              enrolledDate,
+              today: getTodayIsoDate(),
               history: paymentHistory,
             }),
             payment_status: paymentStatus,
@@ -3862,6 +3992,8 @@ export function AppProvider({ children }) {
           paymentStatus,
           paymentPlan,
           lastPaymentDate,
+          enrolledDate,
+          today: getTodayIsoDate(),
           history: paymentHistory,
         }) || null,
         payment_status: paymentStatus,
@@ -4170,6 +4302,31 @@ export function AppProvider({ children }) {
       courseRecord?.id,
       courseRecord?.course_name || enrollmentRecord.course_name || "",
     );
+    const emailVariant = options.emailVariant || "payment_update";
+    const reminderDate = toIsoDate(options.paymentDate || new Date());
+
+    if (emailVariant === "due_reminder") {
+      const alreadyLoggedToday = hasEmailLogOnDate(
+        state.emailLogs,
+        enrollmentId,
+        isPaymentReminderEmailLog,
+        reminderDate,
+      );
+      const alreadyLockedToday = hasPaymentReminderLock(enrollmentId, reminderDate);
+
+      if (alreadyLoggedToday || alreadyLockedToday) {
+        if (!options.silent) {
+          pushNotification({
+            type: "warning",
+            title: `Payment reminder already sent on ${formatDate(reminderDate)}.`,
+          });
+        }
+        return { ok: true, skipped: true, message: "Payment reminder already sent for this date." };
+      }
+
+      setPaymentReminderLock(enrollmentId, reminderDate);
+    }
+
     const sentAt = new Date().toISOString();
     const emailResult = await sendPaymentStatusEmail({
       enrollment: enrollmentRecord,
@@ -4178,10 +4335,13 @@ export function AppProvider({ children }) {
       relatedCourses,
       paidAmount: options.paidAmount,
       paymentDate: options.paymentDate || enrollmentRecord.last_payment_date || "",
-      emailVariant: options.emailVariant || "payment_update",
+      emailVariant,
     });
 
     if (!emailResult.ok) {
+      if (emailVariant === "due_reminder") {
+        clearPaymentReminderLock(enrollmentId, reminderDate);
+      }
       if (!options.silent) {
         pushNotification({
           type: "warning",
@@ -4193,7 +4353,7 @@ export function AppProvider({ children }) {
 
     const log = {
       enrollment_id: enrollmentId,
-      email_type: options.emailVariant === "due_reminder" ? "EMI Due Reminder" : "Payment Update",
+      email_type: emailVariant === "due_reminder" ? "EMI Due Reminder" : "Payment Update",
       status: emailResult.status || "Queued",
       sent_at: sentAt,
     };
@@ -4491,7 +4651,9 @@ export function AppProvider({ children }) {
 
   const portalRecords = useMemo(() => {
     try {
-      return toPortalRecords(state.students, state.enrollments, state.courses, state.documents);
+      return collapsePortalRecordsToCurrent(
+        toPortalRecords(state.students, state.enrollments, state.courses, state.documents),
+      );
     } catch (error) {
       console.error("Failed to build portal records:", error);
       if (typeof window !== "undefined") {
@@ -4556,7 +4718,11 @@ export function AppProvider({ children }) {
       }
 
       const nextDueDate = toIsoDate(record.enrollment.next_due_date || "");
-      if (!nextDueDate || compareIsoDates(nextDueDate, todayIsoDate) > 0) {
+      const reminderWindow = getEmiReminderWindow({
+        enrolledDate: record.enrollment.enrolled_date || record.enrollment.lead_date || "",
+        today: todayIsoDate,
+      });
+      if (!nextDueDate || !reminderWindow.isReminderDueToday) {
         return false;
       }
 
@@ -4568,12 +4734,12 @@ export function AppProvider({ children }) {
         return false;
       }
 
-      return !hasSuccessfulEmailOnOrAfter(
+      return !hasSuccessfulEmailOnDate(
         state.emailLogs,
         record.enrollment.id,
         isPaymentReminderEmailLog,
-        nextDueDate,
-      );
+        todayIsoDate,
+      ) && !hasPaymentReminderLock(record.enrollment.id, todayIsoDate);
     });
 
     if (!dueFollowUps.length && !duePaymentReminders.length) {
@@ -4600,24 +4766,26 @@ export function AppProvider({ children }) {
       }
 
       for (const record of duePaymentReminders) {
-        const nextDueDate = toIsoDate(record.enrollment.next_due_date || "");
-        const paymentReminderKey = `${record.enrollment.id}:${nextDueDate}:payment-reminder`;
+        const reminderDate = todayIsoDate;
+        const paymentReminderKey = `${record.enrollment.id}:${reminderDate}:payment-reminder`;
         if (autoEmailTracker.current.paymentReminder.has(paymentReminderKey)) {
           continue;
         }
 
         autoEmailTracker.current.paymentReminder.add(paymentReminderKey);
+        setPaymentReminderLock(record.enrollment.id, reminderDate);
         try {
           await sendPaymentEmail(record.enrollment.id, {
             enrollment: record.enrollment,
             student: record.student,
             course: record.course,
             emailVariant: "due_reminder",
-            paymentDate: nextDueDate,
+            paymentDate: reminderDate,
             silent: true,
           });
         } catch {
           autoEmailTracker.current.paymentReminder.delete(paymentReminderKey);
+          clearPaymentReminderLock(record.enrollment.id, reminderDate);
         }
       }
     })();

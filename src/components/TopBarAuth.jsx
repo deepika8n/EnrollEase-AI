@@ -2,8 +2,23 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import BrandLogo from "./BrandLogo";
 import { useApp } from "../context/AppContext";
 
+function CopilotIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true" {...props}>
+      <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3Z" strokeLinejoin="round" />
+      <path d="M18.5 3.5l.6 1.6 1.6.6-1.6.6-.6 1.6-.6-1.6-1.6-.6 1.6-.6.6-1.6Z" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 const navItems = [
   { to: "/dashboard", label: "Dashboard", matches: (pathname) => pathname.startsWith("/dashboard") },
+  {
+    to: "/ai-copilot",
+    label: "AI Copilot",
+    icon: <CopilotIcon className="h-4 w-4" />,
+    matches: (pathname) => pathname.startsWith("/ai-copilot"),
+  },
   { to: "/enquiries", label: "Enquiries", matches: (pathname) => pathname.startsWith("/enquiries") },
   { to: "/records", label: "Student Records", matches: (pathname) => pathname.startsWith("/records") || pathname.startsWith("/students") },
   { to: "/payments", label: "Payments", matches: (pathname) => pathname.startsWith("/payments") },
@@ -54,6 +69,7 @@ export default function TopBarAuth() {
                   className={`${navButtonBaseClass} whitespace-nowrap text-[13px] sm:text-sm ${isActive ? navButtonActiveClass : navButtonIdleClass}`}
                   aria-label={item.label}
                 >
+                  {item.icon || null}
                   {item.label}
                 </Link>
               );

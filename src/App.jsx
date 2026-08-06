@@ -4,6 +4,7 @@ import { useApp } from "./context/AppContext";
 import DashboardHoverPage from "./pages/DashboardHoverPage";
 import EnquiriesPage from "./pages/EnquiriesPage";
 import EnrollmentPageSimple from "./pages/EnrollmentPageSimple";
+import AiCopilotPage from "./pages/AiCopilotPage";
 import LandingPageSimple from "./pages/LandingPageSimple";
 import LoginPageSimple from "./pages/LoginPageSimple";
 import PaymentsPage from "./pages/PaymentsPage";
@@ -59,6 +60,7 @@ export default function App() {
         <Route path="/admin-login" element={<LoginPageSimple />} />
         <Route path="/login" element={<Navigate to="/admin-login" replace />} />
         <Route path="/dashboard" element={<ProtectedRoute><DashboardHoverPage /></ProtectedRoute>} />
+        <Route path="/ai-copilot" element={<ProtectedRoute><AiCopilotPage /></ProtectedRoute>} />
         <Route path="/enrollment" element={<ProtectedRoute><EnrollmentPageSimple /></ProtectedRoute>} />
         <Route path="/records" element={<ProtectedRoute><RecordsPage /></ProtectedRoute>} />
         <Route path="/students/:id" element={<ProtectedRoute><StudentProfilePageFixed /></ProtectedRoute>} />
