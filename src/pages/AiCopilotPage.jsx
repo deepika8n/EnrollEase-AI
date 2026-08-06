@@ -11,6 +11,7 @@ import { formatCurrency, formatDate } from "../utils/formatters";
 import { resolveAmountPaid, resolveRemainingAmount } from "../utils/paymentHelpers";
 
 const AGENT_IMAGE = "https://www.blockchain-council.org/_next/image/?url=%2Fblog-media%2Fposts%2Fbb618010-070%2Fgemini-sparks-what-googles-always-on-ai-agent-could-mean-for-users-and-enterpris.jpg&w=1920&q=75";
+const HEADER_IMAGE = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTPHKrrvnRtBOtwSIaa92E9qUkmryQA8iJWM10js5C38A&s=10";
 
 function ActionChip({ active, children, onClick }) {
   return (
@@ -240,6 +241,15 @@ export default function AiCopilotPage() {
         eyebrow="AI Agent"
         title="Admissions Agent"
         description="Ask anything and get answers only from the current app data."
+        actions={(
+          <div className="group overflow-hidden rounded-[20px] border border-sky-100/80 bg-white/80 p-1 shadow-[0_14px_30px_rgba(148,163,184,0.14)] backdrop-blur-sm">
+            <img
+              src={HEADER_IMAGE}
+              alt="AI agent icon"
+              className="h-16 w-16 rounded-[16px] object-cover transition duration-500 group-hover:scale-105 sm:h-20 sm:w-20"
+            />
+          </div>
+        )}
       />
 
       <section className="relative overflow-hidden rounded-[36px] bg-[radial-gradient(circle_at_top_left,rgba(125,211,252,0.26),transparent_28%),radial-gradient(circle_at_bottom_left,rgba(250,204,21,0.22),transparent_24%),radial-gradient(circle_at_top_right,rgba(147,197,253,0.2),transparent_26%),linear-gradient(180deg,#f8fbff_0%,#eef4fb_100%)] p-4 md:p-5">

@@ -670,6 +670,53 @@ function parseStructuredAgentResponse(rawText = "") {
   };
 }
 
+function parseAiErrorPayload(errorText = "") {
+  const normalized = String(errorText || "").trim();
+  if (!normalized) return null;
+
+  try {
+    return JSON.parse(normalized);
+  } catch {
+    const jsonMatch = normalized.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return null;
+
+    try {
+      return JSON.parse(jsonMatch[0]);
+    } catch {
+      return null;
+    }
+  }
+}
+
+function createAiError(message, code = "", status = "", retryAfterSeconds = null) {
+  const error = new Error(message);
+  error.aiCode = String(code || "").trim();
+  error.aiStatus = String(status || "").trim();
+  error.retryAfterSeconds = Number.isFinite(Number(retryAfterSeconds)) ? Number(retryAfterSeconds) : null;
+  return error;
+}
+
+function formatProviderError(errorText = "", fallbackMessage = "AI response could not be generated.") {
+  const payload = parseAiErrorPayload(errorText);
+  const providerError = payload?.error || payload;
+  const code = String(providerError?.code || "").trim();
+  const status = String(providerError?.status || "").trim();
+  const message = String(providerError?.message || "").trim();
+  const retryMatch = message.match(/retry in\s+(\d+(?:\.\d+)?)s/i);
+  const retryAfterSeconds = retryMatch ? Math.ceil(Number(retryMatch[1])) : null;
+
+  if (code === "429" || status === "RESOURCE_EXHAUSTED" || /quota exceeded|rate limit|resource exhausted/i.test(message)) {
+    const retryLine = retryAfterSeconds ? ` Try again in about ${retryAfterSeconds} seconds.` : " Try again after a short wait.";
+    return createAiError(`AI limit reached for now.${retryLine}`, code, status, retryAfterSeconds);
+  }
+
+  if (/api key|permission|unauthorized|forbidden|invalid/i.test(message)) {
+    return createAiError("AI setup error. Check the API key and model settings.", code, status, retryAfterSeconds);
+  }
+
+  return createAiError(message || fallbackMessage, code, status, retryAfterSeconds);
+}
+
 async function requestOpenAiCopilot(prompt) {
   const response = await fetch(AI_API_URL, {
     method: "POST",
@@ -689,7 +736,7 @@ async function requestOpenAiCopilot(prompt) {
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => "");
-    throw new Error(errorText || "OpenAI response could not be generated.");
+    throw formatProviderError(errorText, "OpenAI response could not be generated.");
   }
 
   const payload = await response.json();
@@ -725,7 +772,7 @@ async function requestGeminiCopilot(prompt) {
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => "");
-    throw new Error(errorText || "Gemini response could not be generated.");
+    throw formatProviderError(errorText, "Gemini response could not be generated.");
   }
 
   const payload = await response.json();
@@ -868,12 +915,16 @@ export async function generateAdmissionsCopilotResponse({
           : fallbackMatchedRecords.slice(0, 4).map((record) => `Review ${getRecordLabel(record)}: ${getTimelineFlags(record)[0] || "Needs attention"}`),
     };
   } catch (error) {
+    const suggestion = error?.aiStatus === "RESOURCE_EXHAUSTED" || error?.aiCode === "429"
+      ? "Free AI limit reached. Wait a few seconds and try again, or use a fresh key/project."
+      : "Check the AI key, model, or API URL configuration and try again.";
+
     return {
       mode: "ai_error",
-      answer: error?.message ? `AI agent request failed: ${error.message}` : "AI agent request failed.",
+      answer: error?.message || "AI agent request failed.",
       matchedRecords: [],
       insights: [],
-      suggestions: ["Check the AI key, model, or API URL configuration and try again."],
+      suggestions: [suggestion],
     };
   }
 }
