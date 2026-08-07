@@ -1372,11 +1372,9 @@ Deno.serve(async (request) => {
       }
 
       const reminderWindow = getEmiReminderWindow(enrollment.enrolled_date || enrollment.lead_date || "", todayIsoDate);
-      const nextDueDate = reminderWindow.checklistDate || toIsoDate(enrollment.next_due_date || "");
       const remainingAmount = resolveRemainingAmount(enrollment.total_fee, enrollment.amount_paid) ?? 0;
       if (
-        nextDueDate
-        && reminderWindow.isReminderDueToday
+        reminderWindow.isReminderDueToday
         && remainingAmount > 0
         && String(enrollment.payment_status || "").trim() !== "Paid"
         && !hasSuccessfulEmailOnDate(emailLogs, enrollment.id, isPaymentReminderEmailLog, todayIsoDate)

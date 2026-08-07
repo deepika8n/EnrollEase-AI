@@ -4717,12 +4717,11 @@ export function AppProvider({ children }) {
         return false;
       }
 
-      const nextDueDate = toIsoDate(record.enrollment.next_due_date || "");
       const reminderWindow = getEmiReminderWindow({
         enrolledDate: record.enrollment.enrolled_date || record.enrollment.lead_date || "",
         today: todayIsoDate,
       });
-      if (!nextDueDate || !reminderWindow.isReminderDueToday) {
+      if (!reminderWindow.isReminderDueToday) {
         return false;
       }
 
