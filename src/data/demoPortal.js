@@ -116,7 +116,7 @@ export const demoCourses = [
   {
     id: "course-agentic-ai",
     course_name: "Agentic AI",
-    duration: "6 Months",
+    duration: "3 Months",
     fee: 45000,
     batch: "Weekend Elite",
     active_status: true,
@@ -126,7 +126,7 @@ export const demoCourses = [
   {
     id: "course-data-science",
     course_name: "Data Science",
-    duration: "8 Months",
+    duration: "3 Months",
     fee: 52000,
     batch: "Morning Pro",
     active_status: true,
@@ -136,7 +136,7 @@ export const demoCourses = [
   {
     id: "course-full-stack",
     course_name: "Full Stack Development",
-    duration: "7 Months",
+    duration: "3 Months",
     fee: 48000,
     batch: "Evening Launch",
     active_status: true,
@@ -146,7 +146,7 @@ export const demoCourses = [
   {
     id: "course-python",
     course_name: "Python Programming",
-    duration: "4 Months",
+    duration: "2 Months",
     fee: 28000,
     batch: "Fast Track",
     active_status: true,
@@ -156,7 +156,7 @@ export const demoCourses = [
   {
     id: "course-digital",
     course_name: "Digital Marketing",
-    duration: "5 Months",
+    duration: "2 Months",
     fee: 32000,
     batch: "Career Boost",
     active_status: true,

@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import BrandLogo from "../components/BrandLogo";
 import { canonicalCourseSeeds, getCourseFormOptions } from "../data/courseCatalog";
-import { submitPublicEnquiry } from "../services/mailerService";
+import { useApp } from "../context/AppContext";
+import { supabase, hasSupabaseEnv } from "../lib/supabase";
+import { loadPublicCourses, submitPublicEnquiry } from "../services/mailerService";
 import { getTodayIsoDate } from "../utils/enrollmentDateValidation";
 
 const currentActivityOptions = ["Student", "Working"];
@@ -60,12 +62,43 @@ function LabeledField({ label, children }) {
 }
 
 export default function PublicEnquiryPage() {
+  const { courses } = useApp();
+  const [publicCourses, setPublicCourses] = useState([]);
+  const [courseLoadError, setCourseLoadError] = useState("");
   const [form, setForm] = useState(createBlankForm);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [activeStepIndex, setActiveStepIndex] = useState(0);
-  const courseOptions = useMemo(() => getCourseFormOptions(canonicalCourseSeeds), []);
+  const courseOptions = useMemo(
+    () => getCourseFormOptions(publicCourses.length ? publicCourses : courses?.length ? courses : canonicalCourseSeeds),
+    [publicCourses, courses],
+  );
+
+  useEffect(() => {
+    if (!hasSupabaseEnv || !supabase) {
+      return;
+    }
+
+    let mounted = true;
+    const loadCourses = async () => {
+      try {
+        const loadedCourses = await loadPublicCourses();
+        if (mounted && Array.isArray(loadedCourses) && loadedCourses.length) {
+          setPublicCourses(loadedCourses);
+        }
+      } catch (loadError) {
+        if (!mounted) return;
+        setCourseLoadError(loadError.message || "Unable to load course options.");
+      }
+    };
+
+    void loadCourses();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     const timer = window.setInterval(() => {

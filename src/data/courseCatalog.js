@@ -51,7 +51,7 @@ const catalog = [
     course_name: "Agentic AI",
     legacyNames: ["Agentic AI"],
     legacyIds: ["course-agentic-ai"],
-    duration: "6 Months",
+    duration: "3 Months",
     fee: 45000,
     batch: "Weekend Elite",
     badge: "AI LAB",
@@ -69,7 +69,7 @@ const catalog = [
     course_name: "Data Science",
     legacyNames: ["Data Science", "Data Analytics"],
     legacyIds: ["course-data-science"],
-    duration: "8 Months",
+    duration: "3 Months",
     fee: 52000,
     batch: "Morning Pro",
     badge: "ANALYTICS",
@@ -87,7 +87,7 @@ const catalog = [
     course_name: "Full Stack Development",
     legacyNames: ["Full Stack Development", "Python Full Stack"],
     legacyIds: ["course-full-stack"],
-    duration: "7 Months",
+    duration: "3 Months",
     fee: 48000,
     batch: "Evening Launch",
     badge: "WEB BUILD",
@@ -105,7 +105,7 @@ const catalog = [
     course_name: "Python Programming",
     legacyNames: ["Python Programming", "Power BI"],
     legacyIds: ["course-python"],
-    duration: "4 Months",
+    duration: "2 Months",
     fee: 28000,
     batch: "Fast Track",
     badge: "PYTHON CORE",
@@ -123,7 +123,7 @@ const catalog = [
     course_name: "Digital Marketing",
     legacyNames: ["Digital Marketing", "Java Full Stack"],
     legacyIds: ["course-digital"],
-    duration: "5 Months",
+    duration: "2 Months",
     fee: 32000,
     batch: "Career Boost",
     badge: "BRAND BOOST",
@@ -200,6 +200,7 @@ export function getCourseFormOptions(sourceCourses = []) {
 
     return {
       ...sourceCourse,
+      key: sourceCourse?.id || catalogItem.key,
       id: sourceCourse?.id || catalogItem.legacyIds[0] || catalogItem.key,
       course_name: catalogItem.course_name,
       duration: sourceCourse?.duration || catalogItem.duration,
@@ -213,10 +214,16 @@ export function getCourseFormOptions(sourceCourses = []) {
 
 export function decorateCourseRecord(course) {
   const catalogItem = publicCourseCatalog.find((item) => courseMatchesCatalog(course, item));
-  if (!catalogItem) return course;
+  if (!catalogItem) {
+    return {
+      ...course,
+      key: course.id || course.course_name,
+    };
+  }
 
   return {
     ...course,
+    key: catalogItem.key || course.id || course.course_name,
     course_name: catalogItem.course_name,
     duration: course.duration || catalogItem.duration,
     fee: Number(course.fee) || catalogItem.fee,

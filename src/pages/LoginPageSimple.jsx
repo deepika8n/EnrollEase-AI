@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import BrandLogo from "../components/BrandLogo";
 import { useApp } from "../context/AppContext";
 
-const ADMISSIONS_IMAGE_URL = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSYFPBNPTdO9cfVl5855NkSgmCNM0gMeM05DRSrMT6fIA&s=10";
+const ADMISSIONS_IMAGE_URL = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRIuIDRNN8zQ6HzZwhfzlOgOJikIGaiScyJnhgaIxt-Og&s=10";
 
 export default function LoginPageSimple() {
   const { currentUser, login, logout, resetPassword } = useApp();
@@ -149,11 +149,14 @@ export default function LoginPageSimple() {
               ) : (
                 <>
                   <p className="mt-5 text-[11px] font-bold uppercase tracking-[0.28em] text-brand-500/72">
-                    Admin Only
+                    Admissions Portal
                   </p>
                   <h2 className="mt-3 text-center font-display text-[1.8rem] font-bold tracking-[-0.05em] text-slate-950 sm:text-[2rem]">
-                    Sign in to manage admissions
+                    Sign in to continue
                   </h2>
+                  <p className="mt-3 text-center text-sm leading-6 text-slate-600">
+                    Secure access for admissions staff and users with TS credentials.
+                  </p>
                 </>
               )}
             </div>

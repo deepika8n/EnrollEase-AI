@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import BrandLogo from "../components/BrandLogo";
-import { publicCourseCatalog } from "../data/courseCatalog";
+import { decorateCourseRecord, publicCourseCatalog } from "../data/courseCatalog";
+import { supabase, hasSupabaseEnv } from "../lib/supabase";
+import { loadPublicCourses } from "../services/mailerService";
 import heroSlide1 from "../assets/hero-slide-2.png";
-import heroSlide2 from "../assets/hero-slide-3.png";
 import heroSlide3 from "../assets/enrollment-hero.png";
 
 const slides = [
   { image: heroSlide1, title: "Smart admission tracking" },
-  { image: heroSlide2, title: "Simple course visibility" },
   { image: heroSlide3, title: "Clean enrollment workflows" },
 ];
 
@@ -234,7 +234,35 @@ export default function LandingPageSimple() {
   const [ctaVisible, setCtaVisible] = useState(false);
   const [flippedCourses, setFlippedCourses] = useState({});
   const [showAdminAlert, setShowAdminAlert] = useState(false);
-  const courses = useMemo(() => publicCourseCatalog, []);
+  const [publicCourses, setPublicCourses] = useState([]);
+  const courses = useMemo(
+    () => (publicCourses.length ? publicCourses.map(decorateCourseRecord) : publicCourseCatalog),
+    [publicCourses],
+  );
+
+  useEffect(() => {
+    if (!hasSupabaseEnv || !supabase) {
+      return undefined;
+    }
+
+    let mounted = true;
+
+    const loadCourses = async () => {
+      try {
+        const loadedCourses = await loadPublicCourses();
+        if (mounted && Array.isArray(loadedCourses) && loadedCourses.length) {
+          setPublicCourses(loadedCourses);
+        }
+      } catch {
+        // Keep showing the static catalog fallback on error.
+      }
+    };
+
+    void loadCourses();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     const timer = window.setInterval(() => {

@@ -226,10 +226,12 @@ function getFollowUpMeta(record, logs = [], nowMs = Date.now()) {
 
 export default function EnquiriesPage() {
   const {
-    portalRecords,
+    authUser,
+    allPortalRecords,
     importStudentsFromCsv,
     deleteEnquiry,
     emailLogs,
+    refreshState,
     sendDashboardFollowUpEmail,
     sendStudentEnrollmentForm,
     updateEnrollmentStatus,
@@ -275,6 +277,30 @@ export default function EnquiriesPage() {
     return () => window.clearInterval(intervalId);
   }, []);
 
+  useEffect(() => {
+    if (!authUser) {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    const syncLatestEnquiries = async () => {
+      try {
+        await refreshState(authUser, { forceRemote: true });
+      } catch (error) {
+        if (!cancelled) {
+          console.warn("Failed to refresh enquiries from Supabase:", error);
+        }
+      }
+    };
+
+    void syncLatestEnquiries();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authUser]);
+
   const followUpLogsByEnrollment = useMemo(() => {
     const grouped = new Map();
 
@@ -294,8 +320,8 @@ export default function EnquiriesPage() {
 
   const enquiries = useMemo(
     () =>
-      portalRecords.filter((record) => {
-        if (record.currentStage !== "Enquiry") {
+      allPortalRecords.filter((record) => {
+        if (record.isEnrolledRecord || record.isDropoutRecord) {
           return false;
         }
 
@@ -311,7 +337,7 @@ export default function EnquiriesPage() {
 
         return String(record.student.full_name || "").toLowerCase().includes(normalizedFilter);
       }),
-    [nameFilter, portalRecords, sourceFilter],
+    [allPortalRecords, nameFilter, sourceFilter],
   );
 
   const selectedFollowUpRecord = enquiries.find((record) => record.enrollment.id === selectedFollowUpId) || null;

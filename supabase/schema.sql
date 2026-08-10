@@ -192,9 +192,9 @@ with check (true);
 
 insert into courses (course_name, duration, fee, batch, mode, active_status)
 values
-  ('Agentic AI', '6 Months', 45000, 'Weekend Elite', 'Automation', true),
-  ('Data Science', '8 Months', 52000, 'Morning Pro', 'Insights', true),
-  ('Full Stack Development', '7 Months', 48000, 'Evening Launch', 'Development', true),
-  ('Python Programming', '4 Months', 28000, 'Fast Track', 'Programming', true),
-  ('Digital Marketing', '5 Months', 32000, 'Career Boost', 'Marketing', true)
+  ('Agentic AI', '3 Months', 45000, 'Weekend Elite', 'Automation', true),
+  ('Data Science', '3 Months', 52000, 'Morning Pro', 'Insights', true),
+  ('Full Stack Development', '3 Months', 48000, 'Evening Launch', 'Development', true),
+  ('Python Programming', '2 Months', 28000, 'Fast Track', 'Programming', true),
+  ('Digital Marketing', '2 Months', 32000, 'Career Boost', 'Marketing', true)
 on conflict do nothing;

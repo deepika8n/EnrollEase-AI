@@ -233,7 +233,7 @@ export default function DashboardHoverPage() {
       const leadMonthIndex = monthIndex[toMonthKey(record.enrollment.lead_date || record.enrollment.created_at)];
       const enrolledMonthIndex = monthIndex[toMonthKey(record.enrollment.enrolled_date)];
 
-      if (leadMonthIndex !== undefined && !enquiryStudentIds.has(studentId)) {
+      if (record.isEnquiryRecord && leadMonthIndex !== undefined && !enquiryStudentIds.has(studentId)) {
         enquiriesByMonth[leadMonthIndex] += 1;
         enquiryStudentIds.add(studentId);
       }
@@ -298,7 +298,7 @@ export default function DashboardHoverPage() {
         {
           title: "Total Enquiries",
           value: formatNumber(dashboardMetrics.totalEnquiries),
-          subtitle: "All enquiries received",
+          subtitle: "Live follow-up enquiries",
           icon: <EnquiryIcon className="h-4 w-4" />,
           panelClass: "border-sky-200 bg-[linear-gradient(180deg,#f5fbff_0%,#edf7ff_100%)]",
           iconClass: "border-sky-200 bg-sky-100 text-sky-600",

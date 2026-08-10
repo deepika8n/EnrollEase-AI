@@ -17,7 +17,7 @@ insert into private.automation_config (
 )
 values (
   true,
-  'https://tahjvrzekccdlekxrrgp.supabase.co/functions/v1/automation-dispatch',
+  'https://YOUR_PROJECT.supabase.co/functions/v1/automation-dispatch',
   'REPLACE_WITH_AUTOMATION_DISPATCH_SECRET'
 )
 on conflict (id) do update

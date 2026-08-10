@@ -509,6 +509,9 @@ function trimBrowserStorageForSupabaseMode() {
 
 function buildCurrentUserFallback(sessionUser) {
   if (!sessionUser) return null;
+  if (sessionUser.is_anonymous || sessionUser.app_metadata?.provider === "anonymous") {
+    return null;
+  }
 
   const normalizedEmail = normalizeEmailKey(sessionUser.email || "");
   const fallbackName =
@@ -1808,13 +1811,18 @@ function toPortalRecords(students, enrollments, courses, documents) {
     .sort((left, right) => new Date(right.enrollment.lead_date || right.enrollment.created_at) - new Date(left.enrollment.lead_date || left.enrollment.created_at));
 }
 
+export function buildPortalRecords(students = [], enrollments = [], courses = [], documents = []) {
+  return toPortalRecords(students, enrollments, courses, documents);
+}
+
 function buildDashboardMetrics(records) {
   const totalRecords = records.length;
   const pending = records.filter((record) => record.isEnquiryRecord).length;
-  const totalEnquiries = totalRecords;
+  const totalEnquiries = pending;
+  const totalLeads = totalRecords;
   const totalEnrolled = records.filter((record) => record.isEnrolledRecord).length;
   const totalDropouts = records.filter((record) => record.isDropoutRecord).length;
-  const conversionRate = totalEnquiries ? Math.round((totalEnrolled / totalEnquiries) * 100) : 0;
+  const conversionRate = totalLeads ? Math.round((totalEnrolled / totalLeads) * 100) : 0;
   const emiStudents = records.filter((record) => isEmiEnrollment(record.enrollment) && record.paymentEligible).length;
   const clearedPayments = records.filter((record) => record.enrollment.payment_status === "Paid").length;
   const enrolledGirls = records.filter((record) => record.isEnrolledRecord && inferStudentGenderBucket(record.student) === "girl").length;
@@ -1823,6 +1831,7 @@ function buildDashboardMetrics(records) {
 
   return {
     totalRecords,
+    totalLeads,
     totalEnquiries,
     totalEnrolled,
     totalDropouts,
@@ -2186,6 +2195,46 @@ export function AppProvider({ children }) {
     fetchTable("courses", (query) => query.select("*").order("course_name", { ascending: true }))
   );
 
+  const ensureCurrentUserProfile = async (sessionUser) => {
+    if (!sessionUser || !hasSupabaseEnv || !supabase) {
+      return null;
+    }
+    if (sessionUser.is_anonymous || sessionUser.app_metadata?.provider === "anonymous") {
+      return null;
+    }
+
+    const existingProfile = state.profiles.find((profile) => profile.user_id === sessionUser.id)
+      || state.profiles.find((profile) => normalizeEmailKey(profile.email) === normalizeEmailKey(sessionUser.email));
+    if (existingProfile) {
+      return existingProfile;
+    }
+
+    const fallbackProfile = buildCurrentUserFallback(sessionUser);
+    const profilePayload = {
+      user_id: sessionUser.id,
+      full_name: fallbackProfile.full_name || "Admin",
+      email: fallbackProfile.email || sessionUser.email || "",
+      role: fallbackProfile.role || "admin",
+    };
+
+    const { data: insertedProfile, error: profileInsertError } = await supabase
+      .from("profiles")
+      .insert(profilePayload)
+      .select()
+      .single();
+    if (profileInsertError) {
+      throw formatEnrollmentAccessError(profileInsertError, "insert", "profiles");
+    }
+
+    setState((prev) => ({
+      ...prev,
+      profiles: dedupeRecordsById([insertedProfile, ...(prev.profiles || [])]),
+      currentUser: insertedProfile,
+    }));
+
+    return insertedProfile;
+  };
+
   const fetchRemoteStudents = async () => (
     fetchTable("students", (query) => query.select("id, student_code, email"))
   );
@@ -2244,6 +2293,26 @@ export function AppProvider({ children }) {
     }
 
     return fetchRemoteCourses();
+  };
+
+  const bootstrapFreshProjectIfNeeded = async (sessionUser) => {
+    if (!sessionUser || !hasSupabaseEnv || !supabase) {
+      return;
+    }
+    if (sessionUser.is_anonymous || sessionUser.app_metadata?.provider === "anonymous") {
+      return;
+    }
+
+    await ensureCurrentUserProfile(sessionUser);
+
+    const existingCourses = await fetchRemoteCourses();
+    if (!existingCourses.length) {
+      const seededCourses = await seedCanonicalCourses();
+      syncCoursesIntoState(seededCourses);
+      return;
+    }
+
+    syncCoursesIntoState(existingCourses);
   };
 
   const resolveCourseRecord = async ({ courseId, courseName }) => {
@@ -2472,6 +2541,102 @@ export function AppProvider({ children }) {
       subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (!hasSupabaseEnv || !supabase || !state.authUser) {
+      return undefined;
+    }
+
+    let refreshing = false;
+    let bootstrapping = false;
+
+    const syncPortalState = async () => {
+      if (refreshing || document.visibilityState === "hidden") {
+        return;
+      }
+
+      refreshing = true;
+      try {
+        await refreshState(state.authUser, { forceRemote: true });
+      } catch (error) {
+        console.warn("Portal refresh on visibility/focus failed:", error);
+      } finally {
+        refreshing = false;
+      }
+    };
+
+    const bootstrapProjectState = async () => {
+      if (bootstrapping) {
+        return;
+      }
+
+      bootstrapping = true;
+      try {
+        const needsProfile = !state.profiles.some((profile) => profile.user_id === state.authUser.id);
+        const needsCourses = !state.courses.length;
+
+        if (needsProfile || needsCourses) {
+          await bootstrapFreshProjectIfNeeded(state.authUser);
+          await refreshState(state.authUser, { forceRemote: true });
+        }
+      } catch (error) {
+        console.warn("Fresh project bootstrap failed:", error);
+      } finally {
+        bootstrapping = false;
+      }
+    };
+
+    const intervalId = window.setInterval(() => {
+      void syncPortalState();
+    }, AUTOMATION_RECHECK_INTERVAL_MS);
+
+    const handleWindowFocus = () => {
+      void syncPortalState();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void syncPortalState();
+      }
+    };
+
+    const portalRealtimeChannel = supabase
+      .channel(`portal-live-sync-${state.authUser.id || state.authUser.email || "admin"}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "students" },
+        () => {
+          void syncPortalState();
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "enrollments" },
+        () => {
+          void syncPortalState();
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "documents" },
+        () => {
+          void syncPortalState();
+        },
+      )
+      .subscribe();
+
+    window.addEventListener("focus", handleWindowFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    void bootstrapProjectState();
+    void syncPortalState();
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", handleWindowFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      supabase.removeChannel(portalRealtimeChannel);
+    };
+  }, [state.authUser, state.courses.length, state.profiles.length]);
 
   const login = async ({ email, password }) => {
     if (!hasSupabaseEnv || !supabase) {
@@ -4649,11 +4814,25 @@ export function AppProvider({ children }) {
     }
   };
 
+  const allPortalRecords = useMemo(() => {
+    try {
+      return toPortalRecords(state.students, state.enrollments, state.courses, state.documents);
+    } catch (error) {
+      console.error("Failed to build raw portal records:", error);
+      if (typeof window !== "undefined") {
+        window.__ENROLLEASE_RUNTIME_ERROR__ = {
+          message: error?.message || "Failed to build raw portal records.",
+          stack: error?.stack || "",
+          capturedAt: new Date().toISOString(),
+        };
+      }
+      return [];
+    }
+  }, [state.courses, state.documents, state.enrollments, state.students]);
+
   const portalRecords = useMemo(() => {
     try {
-      return collapsePortalRecordsToCurrent(
-        toPortalRecords(state.students, state.enrollments, state.courses, state.documents),
-      );
+      return collapsePortalRecordsToCurrent(allPortalRecords);
     } catch (error) {
       console.error("Failed to build portal records:", error);
       if (typeof window !== "undefined") {
@@ -4665,7 +4844,7 @@ export function AppProvider({ children }) {
       }
       return [];
     }
-  }, [state.courses, state.documents, state.enrollments, state.students]);
+  }, [allPortalRecords]);
 
   const dashboardMetrics = useMemo(() => {
     try {
@@ -4794,6 +4973,7 @@ export function AppProvider({ children }) {
     () => ({
       ...state,
       demoMode: !hasSupabaseEnv,
+      allPortalRecords,
       portalRecords,
       dashboardMetrics,
       login,
@@ -4815,7 +4995,7 @@ export function AppProvider({ children }) {
       uploadDocument,
       refreshState,
     }),
-    [dashboardMetrics, portalRecords, state],
+    [allPortalRecords, dashboardMetrics, portalRecords, state],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

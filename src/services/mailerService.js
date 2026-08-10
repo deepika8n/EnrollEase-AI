@@ -1,4 +1,4 @@
-import { supabase, supabaseAnonKey, supabaseUrl } from "../lib/supabase";
+import { supabase, supabaseAnonKey, supabaseUrl, hasSupabaseEnv } from "../lib/supabase";
 
 function getFunctionUrl(functionName = "") {
   const normalizedUrl = String(supabaseUrl || "").trim().replace(/\/+$/, "");
@@ -27,6 +27,34 @@ async function buildHeaders(includeAuth = true) {
   return headers;
 }
 
+export async function loadPublicCourses() {
+  if (!hasSupabaseEnv || !supabase) {
+    return [];
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("courses")
+      .select("id, course_name, duration, fee, batch, mode, active_status")
+      .order("course_name", { ascending: true });
+    if (error) {
+      throw error;
+    }
+    return Array.isArray(data) ? data : [];
+  } catch {
+    try {
+      const response = await fetch(getFunctionUrl("public-enquiry"), {
+        method: "GET",
+        headers: await buildHeaders(false),
+      });
+      const data = await response.json().catch(() => ({}));
+      return Array.isArray(data?.courses) ? data.courses : [];
+    } catch {
+      return [];
+    }
+  }
+}
+
 export async function sendDirectEmail(payload) {
   const response = await fetch(getFunctionUrl("mailer"), {
     method: "POST",
@@ -52,7 +80,7 @@ export async function submitPublicEnquiry(payload) {
   });
 
   const data = await response.json().catch(() => ({}));
-  if (!response.ok || data?.ok === false) {
+  if (!response.ok || data?.ok === false || !data?.enrollmentId) {
     throw new Error(data?.error || "Unable to submit enquiry.");
   }
 
