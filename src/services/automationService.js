@@ -14,11 +14,6 @@ const flowDefinitions = {
     agentType: "enrollment_agent",
     actionType: "sync_status",
   },
-  document_verification: {
-    event: "document.verification",
-    agentType: "document_agent",
-    actionType: "verify_document",
-  },
   document_uploaded: {
     event: "document.uploaded",
     agentType: "document_agent",

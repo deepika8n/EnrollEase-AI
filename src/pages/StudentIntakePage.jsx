@@ -1,24 +1,21 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import DocumentPreview from "../components/DocumentPreview";
-import { batchOptions } from "../data/courseCatalog";
+import { batchOptions, normalizeBatchName } from "../data/courseCatalog";
 import { paymentMethods, paymentPlans } from "../utils/constants";
 import { getEnrollmentTimelineValidationMessage, getTodayIsoDate } from "../utils/enrollmentDateValidation";
 import {
   aadhaarFileAccept,
-  extractPdfTextFromSource,
   fileToDataUrl,
   imageFileAccept,
-  isImageSource,
-  isPdfSource,
 } from "../utils/fileHelpers";
 import { formatCurrency } from "../utils/formatters";
-import { resolveNextDueDate } from "../utils/paymentHelpers";
+import { resolveDiscountAmount, resolveNextDueDate, resolvePayableFee } from "../utils/paymentHelpers";
 import { fetchStudentIntakeRequest, submitStudentIntakeRequest } from "../services/studentIntakeService";
 
 const currentActivityOptions = ["Student", "Working"];
-const allowedImageExtensions = [".png", ".jpg", ".jpeg"];
-const allowedImageMimeTypes = new Set(["image/png", "image/jpeg"]);
+const allowedPhotoExtensions = [".png", ".jpg", ".jpeg", ".pdf"];
+const allowedPhotoMimeTypes = new Set(["image/png", "image/jpeg", "application/pdf"]);
 const allowedAadhaarExtensions = [".png", ".jpg", ".jpeg", ".pdf"];
 const allowedAadhaarMimeTypes = new Set(["image/png", "image/jpeg", "application/pdf"]);
 const formPanelClass = "rounded-[32px] border border-rose-100/90 bg-[linear-gradient(145deg,rgba(255,244,247,0.98),rgba(255,232,240,0.94))] shadow-[0_24px_60px_rgba(15,23,42,0.10)]";
@@ -27,7 +24,6 @@ const fieldSurfaceClasses = {
   email: "border-emerald-100 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(236,253,245,0.94))] shadow-[0_10px_24px_rgba(16,185,129,0.08)]",
   phone: "border-cyan-100 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(236,254,255,0.94))] shadow-[0_10px_24px_rgba(34,211,238,0.08)]",
   alternate_phone: "border-orange-100 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,247,237,0.94))] shadow-[0_10px_24px_rgba(249,115,22,0.08)]",
-  college_name: "border-indigo-100 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(238,242,255,0.94))] shadow-[0_10px_24px_rgba(99,102,241,0.08)]",
   current_activity: "border-amber-100 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,251,235,0.94))] shadow-[0_10px_24px_rgba(245,158,11,0.08)]",
   place: "border-rose-100 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,241,242,0.94))] shadow-[0_10px_24px_rgba(244,63,94,0.07)]",
   course_name: "border-teal-100 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(240,253,250,0.94))] shadow-[0_10px_24px_rgba(20,184,166,0.08)]",
@@ -38,6 +34,8 @@ const fieldSurfaceClasses = {
   payment_plan: "border-cyan-100 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(236,254,255,0.94))] shadow-[0_10px_24px_rgba(34,211,238,0.08)]",
   payment_method: "border-orange-100 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,247,237,0.94))] shadow-[0_10px_24px_rgba(249,115,22,0.08)]",
   total_fee: "border-indigo-100 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(238,242,255,0.94))] shadow-[0_10px_24px_rgba(99,102,241,0.08)]",
+  discount_type: "border-cyan-100 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(236,254,255,0.94))] shadow-[0_10px_24px_rgba(34,211,238,0.08)]",
+  discount_value: "border-lime-100 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(247,254,231,0.94))] shadow-[0_10px_24px_rgba(132,204,22,0.08)]",
   amount_paid: "border-amber-100 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,251,235,0.94))] shadow-[0_10px_24px_rgba(245,158,11,0.08)]",
   remaining_amount: "border-rose-100 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,241,242,0.94))] shadow-[0_10px_24px_rgba(244,63,94,0.07)]",
   last_payment_date: "border-sky-100 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(240,249,255,0.94))] shadow-[0_10px_24px_rgba(56,189,248,0.08)]",
@@ -57,7 +55,6 @@ function createBlankForm() {
     email: "",
     phone: "",
     alternate_phone: "",
-    college_name: "",
     current_activity: "",
     place: "",
     address: "",
@@ -71,6 +68,9 @@ function createBlankForm() {
     payment_plan: "One Time",
     payment_method: "UPI",
     total_fee: "",
+    original_fee: "",
+    discount_type: "",
+    discount_value: "",
     amount_paid: "",
     installments_planned: 1,
     installment_amount: "",
@@ -80,8 +80,8 @@ function createBlankForm() {
   };
 }
 
-function calculateInstallmentAmount(totalFee, amountPaid, paymentPlan, installmentsPlanned) {
-  const numericFee = Number(totalFee || 0);
+function calculateInstallmentAmount(payableFee, amountPaid, paymentPlan, installmentsPlanned) {
+  const numericFee = Number(payableFee || 0);
   const numericPaid = Number(amountPaid || 0);
   if (!numericFee || paymentPlan !== "EMI") return "";
   const remainingAmount = Math.max(numericFee - numericPaid, 0);
@@ -127,129 +127,15 @@ function assertAllowedFileType(file, fieldLabel, { mimeTypes, extensions, allowe
   }
 }
 
-function extractAadhaarNumberFromText(value) {
-  const text = String(value || "");
-  const groupedMatch = text.match(/\b\d{4}\s\d{4}\s\d{4}\b/);
-  if (groupedMatch) {
-    return groupedMatch[0].replace(/\D/g, "");
-  }
-
-  const continuousMatch = text.match(/\b\d{12}\b/);
-  if (continuousMatch) {
-    return continuousMatch[0].replace(/\D/g, "");
-  }
-
-  return "";
-}
-
-function loadImageStatsFromDataUrl(source) {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => {
-      const width = image.naturalWidth || image.width || 0;
-      const height = image.naturalHeight || image.height || 0;
-      const canvas = document.createElement("canvas");
-      const context = canvas.getContext("2d", { willReadFrequently: true });
-
-      if (!context || !width || !height) {
-        resolve({
-          width,
-          height,
-          aspectRatio: width && height ? width / height : 0,
-          whiteRatio: 0,
-          vividRatio: 0,
-        });
-        return;
-      }
-
-      const sampleWidth = Math.min(120, width);
-      const sampleHeight = Math.max(1, Math.round((sampleWidth / Math.max(width, 1)) * height));
-      canvas.width = sampleWidth;
-      canvas.height = sampleHeight;
-      context.drawImage(image, 0, 0, sampleWidth, sampleHeight);
-
-      const { data } = context.getImageData(0, 0, sampleWidth, sampleHeight);
-      let whitePixels = 0;
-      let vividPixels = 0;
-      const totalPixels = Math.max(data.length / 4, 1);
-
-      for (let index = 0; index < data.length; index += 4) {
-        const red = data[index];
-        const green = data[index + 1];
-        const blue = data[index + 2];
-        const maxChannel = Math.max(red, green, blue);
-        const minChannel = Math.min(red, green, blue);
-        const spread = maxChannel - minChannel;
-
-        if (red >= 238 && green >= 238 && blue >= 238) {
-          whitePixels += 1;
-        }
-
-        if (spread >= 28 && maxChannel <= 245) {
-          vividPixels += 1;
-        }
-      }
-
-      resolve({
-        width,
-        height,
-        aspectRatio: width && height ? width / height : 0,
-        whiteRatio: whitePixels / totalPixels,
-        vividRatio: vividPixels / totalPixels,
-      });
-    };
-    image.onerror = () => reject(new Error("Unable to read the uploaded image."));
-    image.src = source;
-  });
-}
-
-async function validateStudentPhotoFile(file) {
-  const source = await fileToDataUrl(file);
-  const stats = await loadImageStatsFromDataUrl(source);
-  const portraitLike = stats.aspectRatio >= 0.6 && stats.aspectRatio <= 1.35;
-  const looksLikeDocument = stats.whiteRatio >= 0.52 && stats.vividRatio <= 0.18;
-  const looksLikeTallScreenshot = stats.aspectRatio > 0 && stats.aspectRatio <= 0.52;
-
-  if (!portraitLike || looksLikeDocument || looksLikeTallScreenshot) {
-    throw new Error("Student photo must be a clear face photo only. Document pages, letters, and screenshots are not allowed.");
-  }
-
-  return source;
-}
-
-async function validateAadhaarFile(file) {
-  const source = await fileToDataUrl(file);
-
-  if (isPdfSource(source)) {
-    const extractedText = await extractPdfTextFromSource(source);
-    const normalizedText = String(extractedText || "").toLowerCase();
-    const hasAadhaarKeyword = ["aadhaar", "aadhar", "uidai", "government of india"].some((keyword) => normalizedText.includes(keyword));
-    const aadhaarNumber = extractAadhaarNumberFromText(extractedText);
-
-    if (!hasAadhaarKeyword && !aadhaarNumber) {
-      throw new Error("Aadhaar upload must be an Aadhaar image or Aadhaar PDF only.");
-    }
-
-    return source;
-  }
-
-  const stats = await loadImageStatsFromDataUrl(source);
-  const looksLikeTallScreenshot = stats.aspectRatio > 0 && stats.aspectRatio <= 0.52;
-  const looksLikeInterfaceCapture = stats.whiteRatio <= 0.18 && stats.vividRatio <= 0.12;
-
-  if (looksLikeTallScreenshot || looksLikeInterfaceCapture) {
-    throw new Error("Aadhaar upload must be an Aadhaar image or Aadhaar PDF only. Screenshots and unrelated images are not allowed.");
-  }
-
-  return source;
-}
-
 function buildFormFromRequest(data) {
   const student = data?.student || {};
   const enrollment = data?.enrollment || {};
   const course = data?.course || {};
   const paymentPlan = enrollment.payment_plan && enrollment.payment_plan !== "Pending" ? enrollment.payment_plan : "One Time";
-  const totalFee = String(enrollment.total_fee || course.fee || "");
+  const originalFee = String(enrollment.original_fee || enrollment.total_fee || course.fee || "");
+  const discountType = enrollment.discount_type || "";
+  const discountValue = String(enrollment.discount_value || "");
+  const totalFee = String(resolvePayableFee(originalFee, discountType, discountValue) || enrollment.total_fee || course.fee || "");
   const amountPaid = String(enrollment.amount_paid || 0);
   const installmentsPlanned = Number(enrollment.installments_planned || (paymentPlan === "EMI" ? 3 : 1));
 
@@ -258,7 +144,6 @@ function buildFormFromRequest(data) {
     email: student.email || "",
     phone: student.phone || "",
     alternate_phone: student.alternate_phone || "",
-    college_name: student.college_name || "",
     current_activity: student.current_activity || "Student",
     place: student.place || "",
     address: student.address || "",
@@ -267,11 +152,14 @@ function buildFormFromRequest(data) {
     guardian_phone: student.guardian_phone || "",
     course_name: course.course_name || enrollment.course_name || "",
     lead_date: enrollment.lead_date || getTodayIsoDate(),
-    batch: enrollment.batch || "",
+    batch: normalizeBatchName(enrollment.batch) || "",
     enrolled_date: enrollment.enrolled_date || getTodayIsoDate(),
     payment_plan: paymentPlan,
     payment_method: enrollment.payment_method && enrollment.payment_method !== "Pending" ? enrollment.payment_method : "UPI",
     total_fee: totalFee,
+    original_fee: originalFee,
+    discount_type: discountType,
+    discount_value: discountValue,
     amount_paid: amountPaid,
     installments_planned: installmentsPlanned,
     installment_amount: calculateInstallmentAmount(totalFee, amountPaid, paymentPlan, installmentsPlanned),
@@ -343,7 +231,9 @@ export default function StudentIntakePage() {
   }, [enrollmentId, token]);
 
   const selectedCourse = requestData?.course || null;
-  const totalFeeValue = Number(form.total_fee || selectedCourse?.fee || 0);
+  const originalFeeValue = Number(form.original_fee || form.total_fee || selectedCourse?.fee || 0);
+  const discountAmountValue = resolveDiscountAmount(originalFeeValue, form.discount_type, form.discount_value);
+  const totalFeeValue = resolvePayableFee(originalFeeValue, form.discount_type, form.discount_value);
   const amountPaidValue = Number(form.amount_paid || 0);
   const remainingAmountValue = Math.max(totalFeeValue - amountPaidValue, 0);
   const paymentStatusValue = totalFeeValue > 0
@@ -353,12 +243,6 @@ export default function StudentIntakePage() {
         ? "Partial"
         : "Pending"
     : "Pending";
-
-  const summary = useMemo(() => ({
-    courseName: requestData?.course?.course_name || requestData?.enrollment?.course_name || form.course_name || "Selected Course",
-    batch: requestData?.enrollment?.batch || requestData?.course?.batch || "Pending",
-    email: requestData?.student?.email || form.email || "",
-  }), [form.course_name, form.email, requestData]);
 
   const updateForm = (key, value) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -371,10 +255,12 @@ export default function StudentIntakePage() {
         ...nextValues,
       };
       const paymentPlan = nextForm.payment_plan || "One Time";
+      const nextOriginalFee = nextForm.original_fee || nextForm.total_fee;
+      const nextPayableFee = resolvePayableFee(nextOriginalFee, nextForm.discount_type, nextForm.discount_value);
       const installmentsPlanned = paymentPlan === "EMI"
         ? normalizeInstallmentsCount(nextForm.installments_planned, normalizeInstallmentsCount(prev.installments_planned, 3))
         : 1;
-      const paymentStatus = calculatePaymentStatus(nextForm.total_fee, nextForm.amount_paid);
+      const paymentStatus = calculatePaymentStatus(nextPayableFee, nextForm.amount_paid);
       const autoNextDueDate = paymentPlan === "EMI" && !Object.prototype.hasOwnProperty.call(nextValues, "next_due_date")
         ? resolveNextDueDate({
           paymentStatus,
@@ -386,8 +272,9 @@ export default function StudentIntakePage() {
       return {
         ...nextForm,
         installments_planned: installmentsPlanned,
+        total_fee: String(nextPayableFee || ""),
         installment_amount: calculateInstallmentAmount(
-          nextForm.total_fee,
+          nextPayableFee,
           nextForm.amount_paid,
           paymentPlan,
           installmentsPlanned,
@@ -403,11 +290,11 @@ export default function StudentIntakePage() {
     try {
       setError("");
       assertAllowedFileType(file, "Student photo", {
-        mimeTypes: allowedImageMimeTypes,
-        extensions: allowedImageExtensions,
-        allowedLabel: "a PNG, JPG, or JPEG image",
+        mimeTypes: allowedPhotoMimeTypes,
+        extensions: allowedPhotoExtensions,
+        allowedLabel: "a PNG, JPG, JPEG, or PDF file",
       });
-      const previewSource = await validateStudentPhotoFile(file);
+      const previewSource = await fileToDataUrl(file);
       setPhotoFile(file);
       setPhotoPreview(previewSource);
     } catch (fileError) {
@@ -426,7 +313,7 @@ export default function StudentIntakePage() {
         extensions: allowedAadhaarExtensions,
         allowedLabel: "a PNG, JPG, JPEG, or PDF file",
       });
-      const previewSource = await validateAadhaarFile(file);
+      const previewSource = await fileToDataUrl(file);
       setAadhaarFile(file);
       setAadhaarPreview(previewSource);
     } catch (fileError) {
@@ -465,7 +352,6 @@ export default function StudentIntakePage() {
       if (totalFeeValue <= 0) throw new Error("Course fee must be greater than 0.");
       if (amountPaidValue > totalFeeValue) throw new Error("Amount paid cannot exceed the course fee.");
       if (!photoPreview || !aadhaarPreview) throw new Error("Student photo and Aadhaar upload are required.");
-      if (!isImageSource(photoPreview)) throw new Error("Student photo must be a PNG, JPG, or JPEG image.");
       if (amountPaidValue > 0 && !form.last_payment_date) throw new Error("Last payment date is required when amount paid is greater than zero.");
       if (form.payment_plan === "EMI" && Number(form.installments_planned || 0) <= 0) {
         throw new Error("Number of installments must be greater than zero for EMI payments.");
@@ -487,7 +373,6 @@ export default function StudentIntakePage() {
             email: form.email.trim().toLowerCase(),
             phone: form.phone.trim(),
             alternate_phone: form.alternate_phone.trim(),
-            college_name: form.college_name.trim(),
             current_activity: form.current_activity.trim(),
             place: form.place.trim(),
             address: form.address.trim(),
@@ -503,6 +388,10 @@ export default function StudentIntakePage() {
             payment_status: paymentStatusValue,
             payment_plan: form.payment_plan,
             payment_method: form.payment_method,
+            original_fee: originalFeeValue,
+            discount_type: form.discount_type,
+            discount_value: Number(form.discount_value || 0),
+            discount_amount: discountAmountValue,
             total_fee: totalFeeValue,
             amount_paid: amountPaidValue,
             installments_planned: form.payment_plan === "EMI" ? Number(form.installments_planned || 0) : 1,
@@ -563,22 +452,8 @@ export default function StudentIntakePage() {
           <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400">Complete Admission</p>
           <h1 className="mt-2 text-4xl font-semibold tracking-[-0.04em] text-slate-950">Student Form</h1>
           <p className="mt-3 text-sm text-slate-600">
-            Complete the same enrollment details shared by the admissions team and upload the required documents.
+            Complete the same enrollment details shared by the admissions team.
           </p>
-          <div className="mt-5 grid gap-4 md:grid-cols-3">
-            <div className="rounded-2xl border border-sky-100 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(240,249,255,0.94))] p-4 shadow-[0_10px_24px_rgba(56,189,248,0.08)]">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Course</p>
-              <p className="mt-2 text-sm font-semibold text-slate-900">{summary.courseName}</p>
-            </div>
-            <div className="rounded-2xl border border-emerald-100 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(236,253,245,0.94))] p-4 shadow-[0_10px_24px_rgba(16,185,129,0.08)]">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Batch</p>
-              <p className="mt-2 text-sm font-semibold text-slate-900">{summary.batch}</p>
-            </div>
-            <div className="rounded-2xl border border-violet-100 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(245,243,255,0.94))] p-4 shadow-[0_10px_24px_rgba(139,92,246,0.08)]">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Email</p>
-              <p className="mt-2 text-sm font-semibold text-slate-900">{summary.email || "Pending"}</p>
-            </div>
-          </div>
         </section>
 
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -712,18 +587,45 @@ export default function StudentIntakePage() {
                 <input
                   type="number"
                   min="0"
-                  value={form.total_fee}
-                  onChange={(event) => syncPaymentFields({ total_fee: event.target.value })}
+                  value={form.original_fee || form.total_fee}
+                  onChange={(event) => syncPaymentFields({ original_fee: event.target.value })}
                   placeholder="Enter total course fee"
                   required
                   className={fieldSurfaceClasses.total_fee}
                 />
               </LabeledField>
+              <LabeledField label="Discount Type">
+                <select
+                  value={form.discount_type}
+                  onChange={(event) => syncPaymentFields({ discount_type: event.target.value, discount_value: event.target.value ? form.discount_value : "" })}
+                  className={fieldSurfaceClasses.discount_type}
+                >
+                  <option value="">No discount</option>
+                  <option value="Percentage">Percentage</option>
+                  <option value="Amount">Amount</option>
+                </select>
+              </LabeledField>
+              {form.discount_type ? (
+                <LabeledField label={form.discount_type === "Percentage" ? "Discount (%)" : "Discount Amount (Rs)"}>
+                  <input
+                    type="number"
+                    min="0"
+                    max={form.discount_type === "Percentage" ? "100" : form.original_fee || form.total_fee || undefined}
+                    value={form.discount_value}
+                    onChange={(event) => syncPaymentFields({ discount_value: event.target.value })}
+                    placeholder={form.discount_type === "Percentage" ? "Example: 10" : "Example: 5000"}
+                    className={fieldSurfaceClasses.discount_value}
+                  />
+                </LabeledField>
+              ) : null}
+              <LabeledField label="Final Payable Fee (Rs)">
+                <input value={String(totalFeeValue)} readOnly aria-label="Final Payable Fee" className={fieldSurfaceClasses.total_fee} />
+              </LabeledField>
               <LabeledField label="Amount Paid (Rs) *">
                 <input
                   type="number"
                   min="0"
-                  max={form.total_fee || undefined}
+                  max={totalFeeValue || undefined}
                   value={form.amount_paid}
                   onChange={(event) => syncPaymentFields({ amount_paid: event.target.value })}
                   placeholder="Enter amount paid"
@@ -778,17 +680,20 @@ export default function StudentIntakePage() {
             </div>
 
             {selectedCourse ? (
-              <p className="mt-4 text-sm font-semibold text-brand-500">Selected fee: {formatCurrency(form.total_fee || selectedCourse.fee)}</p>
+              <p className="mt-4 text-sm font-semibold text-brand-500">
+                Selected fee: {formatCurrency(originalFeeValue || selectedCourse.fee)}
+                {discountAmountValue > 0 ? ` | Discount: ${formatCurrency(discountAmountValue)} | Payable: ${formatCurrency(totalFeeValue)}` : ""}
+              </p>
             ) : null}
           </section>
 
           <section className={`${formPanelClass} p-6`}>
-            <h2 className="section-title">Document Uploads</h2>
+            <h2 className="section-title">Student Uploads</h2>
             <div className="mt-6 grid gap-5 md:grid-cols-2">
               <div className="flex min-h-[22rem] flex-col rounded-[24px] border border-dashed border-slate-300 bg-slate-50 p-5">
                 <div>
                   <p className="font-semibold text-slate-900">Student photo</p>
-                  <p className="mt-1 text-sm text-slate-500">Upload only PNG, JPG, or JPEG.</p>
+                  <p className="mt-1 text-sm text-slate-500">Upload PNG, JPG, JPEG, or PDF.</p>
                 </div>
                 <input
                   type="file"

@@ -72,10 +72,7 @@ export default function LoginPageSimple() {
     skipAutoRedirectRef.current = true;
     try {
       await login(form);
-      navigate("/dashboard", {
-        replace: true,
-        state: { showAdminWelcome: true },
-      });
+      navigate("/admin-welcome", { replace: true });
     } catch (loginError) {
       skipAutoRedirectRef.current = false;
       setError(loginError.message);
@@ -103,9 +100,9 @@ export default function LoginPageSimple() {
       <div className="pointer-events-none absolute bottom-[12%] left-[18%] h-56 w-56 rounded-full bg-accent-100/16 blur-[120px]" />
 
       <div className="mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-[480px] items-center justify-center">
-        <section className="relative w-full overflow-hidden rounded-[24px] border border-white/90 bg-white/92 p-[28px] shadow-[0_30px_80px_rgba(9,30,66,0.14)] backdrop-blur-[18px] animate-[fadeUp_600ms_ease_both]">
-          <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(255,255,255,0.92),rgba(255,255,255,0.8))]" />
-          <div className="pointer-events-none absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-brand-200/65 to-transparent" />
+        <section className="relative w-full overflow-hidden rounded-[24px] border border-sky-200/80 bg-[linear-gradient(145deg,#eff8ff_0%,#f3fff8_54%,#ffffff_100%)] p-[28px] shadow-[0_30px_80px_rgba(9,30,66,0.16)] backdrop-blur-[18px] animate-[fadeUp_600ms_ease_both]">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_12%,rgba(47,128,237,0.14),transparent_28%),radial-gradient(circle_at_88%_4%,rgba(30,207,107,0.16),transparent_24%),linear-gradient(145deg,rgba(255,255,255,0.48),rgba(255,255,255,0.2))]" />
+          <div className="pointer-events-none absolute inset-x-8 top-0 h-1.5 rounded-b-full bg-gradient-to-r from-brand-500 via-accent-400 to-emerald-400" />
           <div className="relative z-10 flex flex-col">
             <button
               type="button"
@@ -147,17 +144,9 @@ export default function LoginPageSimple() {
                   Reset your password
                 </h2>
               ) : (
-                <>
-                  <p className="mt-5 text-[11px] font-bold uppercase tracking-[0.28em] text-brand-500/72">
-                    Admissions Portal
-                  </p>
-                  <h2 className="mt-3 text-center font-display text-[1.8rem] font-bold tracking-[-0.05em] text-slate-950 sm:text-[2rem]">
-                    Sign in to continue
-                  </h2>
-                  <p className="mt-3 text-center text-sm leading-6 text-slate-600">
-                    Secure access for admissions staff and users with TS credentials.
-                  </p>
-                </>
+                <h2 className="mt-5 text-center font-display text-[1.8rem] font-bold tracking-[-0.05em] text-slate-950 sm:text-[2rem]">
+                  Sign in to continue
+                </h2>
               )}
             </div>
 

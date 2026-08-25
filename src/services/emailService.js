@@ -1,5 +1,6 @@
 import { sendDirectEmail } from "./mailerService";
 import { generateEnrollmentPdfBlob } from "./pdfServiceFixed";
+import { normalizeBatchName } from "../data/courseCatalog";
 import { toIsoDate } from "../utils/dateMath";
 import { inferPaymentPlan, isEmiPlan, resolveRemainingAmount, toNumberOrNull } from "../utils/paymentHelpers";
 
@@ -113,7 +114,6 @@ function buildFollowUpEmailHtml({ studentName }) {
               <li>Fees</li>
               <li>Batch Timing</li>
               <li>Scholarships</li>
-              <li>Documents</li>
               <li>Payment</li>
             </ul>
           </div>
@@ -147,7 +147,7 @@ We hope you are doing well.
 This is a friendly reminder regarding your admission enquiry with CERTISURED.
 Our admissions team noticed that your enquiry is still pending.
 
-If you need any assistance regarding course details, fees, batch timing, scholarships, documents, or payment, our admissions team is happy to help.
+If you need any assistance regarding course details, fees, batch timing, scholarships, or payment, our admissions team is happy to help.
 
 Please contact us at 8976543209 or reply to this email.
 
@@ -165,7 +165,8 @@ function buildGenericProfileEmailHtml({
 }) {
   const safeStudentName = escapeHtml(studentName || "Student");
   const safeCourseName = escapeHtml(courseName || "Selected Course");
-  const safeBatchName = escapeHtml(batchName || "Batch details will be shared soon");
+  const displayBatchName = normalizeBatchName(batchName) || "";
+  const safeBatchName = escapeHtml(displayBatchName || "Batch details will be shared soon");
   const safeCurrentStage = escapeHtml(currentStage || "Active");
 
   return `
@@ -190,7 +191,7 @@ function buildGenericProfileEmailHtml({
           </div>
 
           <div style="margin-top:24px;padding:18px 20px;border-radius:20px;background:#f3fcf6;border:1px solid #cfeeda;color:#167647;font-size:14px;line-height:1.8;">
-            If you have any questions about admission, documents, schedule, or payments, simply reply to this email and our team will help you.
+            If you have any questions about admission, schedule, or payments, simply reply to this email and our team will help you.
           </div>
 
           <div style="margin-top:28px;padding-top:22px;border-top:1px solid #e4edf6;">
@@ -218,10 +219,10 @@ We are sharing a quick update from CERTISURED regarding your admission journey.
 Current profile summary
 Name: ${studentName || "Student"}
 Course: ${courseName || "Selected Course"}
-Batch: ${batchName || "Batch details will be shared soon"}
+Batch: ${normalizeBatchName(batchName) || "Batch details will be shared soon"}
 Status: ${currentStage || "Active"}
 
-If you have any questions about admission, documents, schedule, or payments, simply reply to this email and our team will help you.
+If you have any questions about admission, schedule, or payments, simply reply to this email and our team will help you.
 
 Regards,
 CERTISURED Team`;
@@ -236,7 +237,8 @@ export function buildStudentIntakeInviteEmail({
 }) {
   const safeStudentName = escapeHtml(studentName || "Student");
   const safeCourseName = escapeHtml(courseName || "Selected Course");
-  const safeBatchName = escapeHtml(batchName || "Batch details will be confirmed by the admissions team");
+  const displayBatchName = normalizeBatchName(batchName) || "";
+  const safeBatchName = escapeHtml(displayBatchName || "Batch details will be confirmed by the admissions team");
   const safeFormUrl = escapeHtml(formUrl || "");
   const safeExpiryLabel = escapeHtml(expiryLabel || "the next 7 days");
 
@@ -296,7 +298,7 @@ Your enquiry has been shortlisted for admission at CERTISURED.
 Please complete your student enrollment form so our admissions team can finish your profile.
 
 Course: ${courseName || "Selected Course"}
-Batch: ${batchName || "Batch details will be confirmed by the admissions team"}
+Batch: ${normalizeBatchName(batchName) || "Batch details will be confirmed by the admissions team"}
 Form link valid until: ${expiryLabel || "the next 7 days"}
 
 Open the enrollment form:
@@ -317,7 +319,8 @@ function buildAdmissionConfirmationEmailHtml({
 }) {
   const safeStudentName = escapeHtml(studentName || "Student");
   const safeCourseName = escapeHtml(courseName || "Selected Course");
-  const safeBatchName = escapeHtml(batchName || "Batch details will be shared soon");
+  const displayBatchName = normalizeBatchName(batchName) || "";
+  const safeBatchName = escapeHtml(displayBatchName || "Batch details will be shared soon");
   const safeEnrolledDate = escapeHtml(formatDateLabel(enrolledDate));
 
   return `
@@ -370,7 +373,7 @@ Your admission has been successfully confirmed with CERTISURED.
 Admission summary
 Name: ${studentName || "Student"}
 Course: ${courseName || "Selected Course"}
-Batch: ${batchName || "Batch details will be shared soon"}
+Batch: ${normalizeBatchName(batchName) || "Batch details will be shared soon"}
 Admission date: ${formatDateLabel(enrolledDate)}
 
 Welcome aboard. Our team will contact you with onboarding details shortly.
@@ -497,7 +500,7 @@ function resolveGenericEmailConfig(emailType, enrollment, options = {}) {
   const normalizedType = String(emailType || "").trim().toLowerCase();
   const studentName = options.student?.full_name || options.student?.name || "Student";
   const courseName = options.course?.course_name || options.course?.name || options.course || enrollment?.course_name || "";
-  const batchName = enrollment?.batch || "";
+  const batchName = normalizeBatchName(enrollment?.batch) || "";
   const currentStage = options.currentStage || enrollment?.pipeline_stage || "Active";
 
   if (normalizedType === "enrollment confirmed" || normalizedType === "admission confirmation") {

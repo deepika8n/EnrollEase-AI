@@ -28,6 +28,15 @@ function compareStudentCodeParts(left, right) {
   return left.numericPart.length - right.numericPart.length;
 }
 
+export function compareStudentCodes(leftCode = "", rightCode = "") {
+  const left = parseStudentCode(leftCode);
+  const right = parseStudentCode(rightCode);
+  const parsedComparison = compareStudentCodeParts(left, right);
+  if (parsedComparison !== 0) return parsedComparison;
+
+  return normalizeStudentCode(leftCode).localeCompare(normalizeStudentCode(rightCode));
+}
+
 export function getNextStudentCode(existingCodes = [], fallbackPrefix = "CT") {
   const parsedCodes = existingCodes
     .map(parseStudentCode)

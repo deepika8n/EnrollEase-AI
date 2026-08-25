@@ -139,6 +139,32 @@ export function resolveRemainingAmount(totalFee, amountPaid) {
   return Math.max(feeValue - (toNumberOrNull(amountPaid) || 0), 0);
 }
 
+export function normalizeDiscountType(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized.includes("percent") || normalized.includes("%")) return "Percentage";
+  if (normalized.includes("amount") || normalized.includes("flat")) return "Amount";
+  return "";
+}
+
+export function resolveDiscountAmount(originalFee, discountType = "", discountValue = 0) {
+  const feeValue = toNumberOrNull(originalFee) || 0;
+  const value = Math.max(toNumberOrNull(discountValue) || 0, 0);
+  const normalizedType = normalizeDiscountType(discountType);
+
+  if (!feeValue || !value || !normalizedType) return 0;
+  if (normalizedType === "Percentage") {
+    return Math.min(Math.round((feeValue * Math.min(value, 100)) / 100), feeValue);
+  }
+
+  return Math.min(value, feeValue);
+}
+
+export function resolvePayableFee(originalFee, discountType = "", discountValue = 0) {
+  const feeValue = toNumberOrNull(originalFee) || 0;
+  const discountAmount = resolveDiscountAmount(feeValue, discountType, discountValue);
+  return Math.max(feeValue - discountAmount, 0);
+}
+
 export function buildPaymentHistoryEntry({
   entryId = "",
   amount = 0,

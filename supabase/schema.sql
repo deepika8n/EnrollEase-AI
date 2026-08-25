@@ -16,7 +16,6 @@ create table if not exists students (
   email text not null unique,
   phone text not null,
   alternate_phone text,
-  college_name text,
   current_activity text,
   place text,
   address text,
@@ -32,7 +31,6 @@ create table if not exists students (
 );
 
 alter table public.students add column if not exists student_code text;
-
 create table if not exists courses (
   id uuid primary key default gen_random_uuid(),
   course_name text not null,
@@ -55,6 +53,10 @@ create table if not exists enrollments (
   follow_up_date date,
   payment_method text,
   payment_plan text,
+  original_fee numeric(12, 2) default 0,
+  discount_type text,
+  discount_value numeric(12, 2) default 0,
+  discount_amount numeric(12, 2) default 0,
   total_fee numeric(12, 2) default 0,
   amount_paid numeric(12, 2) default 0,
   installments_planned integer default 1,
@@ -192,9 +194,11 @@ with check (true);
 
 insert into courses (course_name, duration, fee, batch, mode, active_status)
 values
-  ('Agentic AI', '3 Months', 45000, 'Weekend Elite', 'Automation', true),
-  ('Data Science', '3 Months', 52000, 'Morning Pro', 'Insights', true),
-  ('Full Stack Development', '3 Months', 48000, 'Evening Launch', 'Development', true),
-  ('Python Programming', '2 Months', 28000, 'Fast Track', 'Programming', true),
-  ('Digital Marketing', '2 Months', 32000, 'Career Boost', 'Marketing', true)
+  ('Agentic AI', '3 Months', 45000, 'Evening', 'Automation', true),
+  ('Data Science', '3 Months', 52000, 'Morning', 'Insights', true),
+  ('Full Stack Development', '3 Months', 48000, 'Evening', 'Development', true),
+  ('Python Programming', '2 Months', 28000, 'Afternoon', 'Programming', true),
+  ('Digital Marketing', '2 Months', 32000, 'Afternoon', 'Marketing', true)
 on conflict do nothing;
+  
+  

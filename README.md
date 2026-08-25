@@ -1,20 +1,19 @@
 # EnrollEase AI
 
-EnrollEase AI is an agentic student enrollment management and automation portal for institutes, academies, coaching centers, training providers, and colleges. It combines a modern React frontend with Supabase-ready backend integrations so teams can manage inquiry, enrollment, document verification, PDF generation, communication, and AI-assisted workflow support from one place.
+EnrollEase AI is an agentic student enrollment management and automation portal for institutes, academies, coaching centers, training providers, and colleges. It combines a modern React frontend with Supabase-ready backend integrations so teams can manage inquiry, enrollment, payments, PDF generation, communication, and AI-assisted workflow support from one place.
 
 ## Problem Statement
 
-Educational organizations often manage admissions across forms, spreadsheets, file folders, phone calls, and manual follow-ups. This slows down verification, creates missed document requests, and makes it hard for students to understand what happens next. EnrollEase AI solves that by centralizing the full enrollment flow and adding an AI agent that guides both students and admins.
+Educational organizations often manage admissions across forms, spreadsheets, phone calls, payments, and manual follow-ups. This creates missed follow-ups, scattered records, and confusion for students. EnrollEase AI solves that by centralizing the full enrollment flow and adding an AI agent that guides both students and admins.
 
 ## Features
 
 - Role-based login experience for Admin, Staff, and Student
-- Dashboard views for enrollment metrics, verification status, and course demand
+- Dashboard views for enrollment metrics, payment status, follow-ups, and course demand
 - Multi-section enrollment form for student, guardian, course, batch, payment, and remarks
 - Document upload center with Supabase Storage integration points
 - Enrollment records table with search, filters, and action buttons
 - Student profile page with documents, timeline, and PDF generation
-- Verification panel for approval, rejection, corrections, and workflow progression
 - Native Supabase email and automation flow for enquiry, follow-up, and enrollment communication
 - Optional Supabase server-side automation dispatcher for unattended follow-up and payment reminder runs
 - Admissions Copilot workspace for AI-guided summaries, next steps, follow-up drafts, and priority review

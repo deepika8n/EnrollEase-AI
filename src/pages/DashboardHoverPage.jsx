@@ -14,6 +14,7 @@ import { Bar, Line, Pie } from "react-chartjs-2";
 import AppShell from "../components/AppShell";
 import PageHeader from "../components/PageHeader";
 import { useApp } from "../context/AppContext";
+import { isVisibleDropoutRecord, normalizeStudentName } from "../utils/dropoutVisibility";
 import { formatDate, formatNumber, formatPercent } from "../utils/formatters";
 
 ChartJS.register(ArcElement, BarElement, CategoryScale, Legend, LineElement, LinearScale, PointElement, Tooltip);
@@ -26,10 +27,6 @@ const CHART_COLORS = {
   rose: "#F43F5E",
   slate: "#64748B",
 };
-const HIDDEN_DROPOUT_STUDENTS = new Set([
-  "dhananjaya j n",
-  "chandana k r",
-]);
 
 function parseDate(value) {
   if (!value) return null;
@@ -37,10 +34,6 @@ function parseDate(value) {
   if (Number.isNaN(date.getTime())) return null;
   date.setHours(0, 0, 0, 0);
   return date;
-}
-
-function normalizeStudentName(value = "") {
-  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 function getStudentRecordKey(record) {
@@ -228,26 +221,25 @@ export default function DashboardHoverPage() {
     const enrollmentStudentIds = new Set();
 
     portalRecords.forEach((record) => {
-      const studentId = record.student?.id || record.id;
+      const isVisibleDashboardRecord = !record.isDropoutRecord || isVisibleDropoutRecord(record);
       const courseName = record.course?.course_name || "Unknown Course";
-      const leadMonthIndex = monthIndex[toMonthKey(record.enrollment.lead_date || record.enrollment.created_at)];
+      const leadSourceDate = record.enrollment.lead_date || record.enrollment.created_at;
+      const leadMonthIndex = monthIndex[toMonthKey(leadSourceDate)];
       const enrolledMonthIndex = monthIndex[toMonthKey(record.enrollment.enrolled_date)];
 
-      if (record.isEnquiryRecord && leadMonthIndex !== undefined && !enquiryStudentIds.has(studentId)) {
+      if (isVisibleDashboardRecord && leadMonthIndex !== undefined) {
         enquiriesByMonth[leadMonthIndex] += 1;
-        enquiryStudentIds.add(studentId);
       }
 
       if (record.course?.course_name && !record.isDropoutRecord) {
         courseDistributionMap.set(courseName, (courseDistributionMap.get(courseName) || 0) + 1);
       }
 
-      if (record.isEnrolledRecord && !enrollmentStudentIds.has(studentId)) {
+      if (record.isEnrolledRecord) {
         if (enrolledMonthIndex !== undefined) {
           enrollmentsByMonth[enrolledMonthIndex] += 1;
           admissionsTrend[enrolledMonthIndex] += 1;
         }
-        enrollmentStudentIds.add(studentId);
 
         const statusKey =
           record.enrollment.payment_status === "Paid"
@@ -265,8 +257,7 @@ export default function DashboardHoverPage() {
     const dropoutRecordMap = new Map();
 
     [...portalRecords]
-      .filter((record) => record.isDropoutRecord)
-      .filter((record) => !HIDDEN_DROPOUT_STUDENTS.has(normalizeStudentName(record.student?.full_name || "")))
+      .filter(isVisibleDropoutRecord)
       .forEach((record) => {
         const recordKey = getStudentRecordKey(record);
         const existingRecord = dropoutRecordMap.get(recordKey);
@@ -292,13 +283,17 @@ export default function DashboardHoverPage() {
       const leftDate = parseDate(left.enrollment.dropout_date || left.enrollment.follow_up_date || left.enrollment.lead_date || left.enrollment.created_at);
       return (rightDate?.getTime() || 0) - (leftDate?.getTime() || 0);
     });
+    const totalVisibleEnquiries = dashboardMetrics.pending + dashboardMetrics.totalEnrolled + dropoutRecords.length;
+    const visibleConversionRate = totalVisibleEnquiries
+      ? Math.round((dashboardMetrics.totalEnrolled / totalVisibleEnquiries) * 100)
+      : 0;
 
     return {
       cards: [
         {
           title: "Total Enquiries",
-          value: formatNumber(dashboardMetrics.totalEnquiries),
-          subtitle: "Live follow-up enquiries",
+          value: formatNumber(totalVisibleEnquiries),
+          subtitle: "Visible admissions leads",
           icon: <EnquiryIcon className="h-4 w-4" />,
           panelClass: "border-sky-200 bg-[linear-gradient(180deg,#f5fbff_0%,#edf7ff_100%)]",
           iconClass: "border-sky-200 bg-sky-100 text-sky-600",
@@ -313,7 +308,7 @@ export default function DashboardHoverPage() {
         },
         {
           title: "Conversion Rate",
-          value: formatPercent(dashboardMetrics.conversionRate),
+          value: formatPercent(visibleConversionRate),
           subtitle: "Enquiry to enrollment",
           icon: <ConversionIcon className="h-4 w-4" />,
           panelClass: "border-violet-200 bg-[linear-gradient(180deg,#faf7ff_0%,#f2ecff_100%)]",

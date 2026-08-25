@@ -16,7 +16,6 @@ create table if not exists public.students (
   email text not null unique,
   phone text not null,
   alternate_phone text,
-  college_name text,
   current_activity text,
   place text,
   address text,
@@ -33,7 +32,6 @@ create table if not exists public.students (
 
 alter table public.students add column if not exists student_code text;
 alter table public.students add column if not exists alternate_phone text;
-alter table public.students add column if not exists college_name text;
 alter table public.students add column if not exists current_activity text;
 alter table public.students add column if not exists place text;
 alter table public.students add column if not exists address text;
@@ -75,6 +73,10 @@ create table if not exists public.enrollments (
   follow_up_date date,
   payment_method text,
   payment_plan text,
+  original_fee numeric(12, 2) default 0,
+  discount_type text,
+  discount_value numeric(12, 2) default 0,
+  discount_amount numeric(12, 2) default 0,
   total_fee numeric(12, 2) default 0,
   amount_paid numeric(12, 2) default 0,
   installments_planned integer default 1,
@@ -104,6 +106,10 @@ alter table public.enrollments add column if not exists enrolled_date date;
 alter table public.enrollments add column if not exists follow_up_date date;
 alter table public.enrollments add column if not exists payment_method text;
 alter table public.enrollments add column if not exists payment_plan text;
+alter table public.enrollments add column if not exists original_fee numeric(12, 2) default 0;
+alter table public.enrollments add column if not exists discount_type text;
+alter table public.enrollments add column if not exists discount_value numeric(12, 2) default 0;
+alter table public.enrollments add column if not exists discount_amount numeric(12, 2) default 0;
 alter table public.enrollments add column if not exists total_fee numeric(12, 2) default 0;
 alter table public.enrollments add column if not exists amount_paid numeric(12, 2) default 0;
 alter table public.enrollments add column if not exists installments_planned integer default 1;

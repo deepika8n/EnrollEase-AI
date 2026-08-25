@@ -16,8 +16,8 @@ const enquirySteps = [
   },
   {
     label: "Step 2",
-    title: "Upload required documents",
-    badgeClass: "bg-[linear-gradient(135deg,#7f1d1d_0%,#e11d48_52%,#fb7185_100%)] shadow-[0_12px_28px_rgba(225,29,72,0.24)]",
+    title: "Get course guidance",
+    badgeClass: "bg-[linear-gradient(135deg,#0f766e_0%,#14b8a6_52%,#67e8f9_100%)] shadow-[0_12px_28px_rgba(20,184,166,0.24)]",
   },
   {
     label: "Step 3",
@@ -26,6 +26,7 @@ const enquirySteps = [
   },
 ];
 const STEP_VISUAL_URL = "https://t3.ftcdn.net/jpg/01/24/19/08/360_F_124190850_LFUc6G0en37Nzd60EpYEXpv5tciExvO9.jpg";
+const CERTISURED_YOUTUBE_URL = "https://www.youtube.com/results?search_query=Certisured";
 const formPanelClass = "rounded-[32px] border border-rose-100/90 bg-[linear-gradient(145deg,rgba(255,244,247,0.98),rgba(255,232,240,0.94))] shadow-[0_24px_60px_rgba(15,23,42,0.10)]";
 const fieldSurfaceClasses = {
   full_name: "border-violet-100 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(245,243,255,0.94))] shadow-[0_10px_24px_rgba(139,92,246,0.08)]",
@@ -187,6 +188,33 @@ export default function PublicEnquiryPage() {
                 {enquirySteps[activeStepIndex].title}
               </p>
             </div>
+
+            <section className="mt-8 w-full max-w-xl overflow-hidden rounded-[30px] border border-cyan-100 bg-[linear-gradient(145deg,#ecfeff_0%,#ffffff_46%,#f7fee7_100%)] p-5 shadow-[0_24px_56px_rgba(8,145,178,0.13)] md:p-6">
+              <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-[24px] bg-[linear-gradient(135deg,#dc2626_0%,#ef4444_56%,#fb7185_100%)] shadow-[0_16px_32px_rgba(220,38,38,0.24)]">
+                  <span className="ml-1 h-0 w-0 border-y-[12px] border-l-[18px] border-y-transparent border-l-white" aria-hidden="true" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold uppercase tracking-[0.24em] text-cyan-600">Learn before you enquire</p>
+                  <h2 className="mt-2 font-display text-2xl font-semibold text-slate-950">
+                    Watch CERTISURED on YouTube
+                  </h2>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    Explore workshops, course insights, and student learning moments before choosing your program.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-5 flex flex-wrap gap-3">
+                <a
+                  href={CERTISURED_YOUTUBE_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#0891b2,#10b981)] px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(8,145,178,0.22)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_38px_rgba(16,185,129,0.24)]"
+                >
+                  Watch on YouTube
+                </a>
+              </div>
+            </section>
           </div>
 
           <div className="space-y-5">

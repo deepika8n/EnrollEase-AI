@@ -53,7 +53,7 @@ const catalog = [
     legacyIds: ["course-agentic-ai"],
     duration: "3 Months",
     fee: 45000,
-    batch: "Weekend Elite",
+    batch: "Evening",
     badge: "AI LAB",
     mode: "Automation",
     summary: [
@@ -71,7 +71,7 @@ const catalog = [
     legacyIds: ["course-data-science"],
     duration: "3 Months",
     fee: 52000,
-    batch: "Morning Pro",
+    batch: "Morning",
     badge: "ANALYTICS",
     mode: "Insights",
     summary: [
@@ -89,7 +89,7 @@ const catalog = [
     legacyIds: ["course-full-stack"],
     duration: "3 Months",
     fee: 48000,
-    batch: "Evening Launch",
+    batch: "Evening",
     badge: "WEB BUILD",
     mode: "Development",
     summary: [
@@ -107,7 +107,7 @@ const catalog = [
     legacyIds: ["course-python"],
     duration: "2 Months",
     fee: 28000,
-    batch: "Fast Track",
+    batch: "Afternoon",
     badge: "PYTHON CORE",
     mode: "Programming",
     summary: [
@@ -125,7 +125,7 @@ const catalog = [
     legacyIds: ["course-digital"],
     duration: "2 Months",
     fee: 32000,
-    batch: "Career Boost",
+    batch: "Afternoon",
     badge: "BRAND BOOST",
     mode: "Marketing",
     summary: [
@@ -139,6 +139,15 @@ const catalog = [
 ];
 
 export const batchOptions = ["Morning", "Afternoon", "Evening"];
+
+export function normalizeBatchName(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return "";
+  if (normalized.includes("morning")) return "Morning";
+  if (normalized.includes("evening") || normalized.includes("weekend")) return "Evening";
+  if (normalized.includes("afternoon") || normalized.includes("fast") || normalized.includes("career")) return "Afternoon";
+  return batchOptions.includes(value) ? value : "";
+}
 
 export const canonicalCourseSeeds = catalog.map((item) => ({
   course_name: item.course_name,

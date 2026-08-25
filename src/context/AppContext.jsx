@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { createDemoPortalState } from "../data/demoPortal";
-import { canonicalCourseSeeds, decorateCourseRecord, findCourseByReference } from "../data/courseCatalog";
+import { canonicalCourseSeeds, decorateCourseRecord, findCourseByReference, normalizeBatchName } from "../data/courseCatalog";
 import { hasSupabaseEnv, supabase, supabaseUrl } from "../lib/supabase";
 import { buildStudentIntakeInviteEmail, sendAdmissionFollowUpEmail, sendEmailTrigger, sendPaymentStatusEmail } from "../services/emailService";
 import { buildStudentIntakeUrl, createStudentIntakeToken, hashStudentIntakeToken } from "../services/studentIntakeService";
@@ -27,8 +27,10 @@ import {
   getEmiReminderWindow,
   normalizePaymentHistoryList,
   resolveAmountPaid,
+  resolveDiscountAmount,
   resolveLastPaymentDate,
   resolveNextDueDate,
+  resolvePayableFee,
   resolveRemainingAmount,
   toNumberOrNull,
 } from "../utils/paymentHelpers";
@@ -402,19 +404,28 @@ function sanitizeStudentForCache(student = {}) {
     full_name: student.full_name || "",
     email: student.email || "",
     phone: student.phone || "",
-    alternate_phone: student.alternate_phone || "",
-    address: student.address || "",
-    place: student.place || "",
-    college_name: student.college_name || "",
     current_activity: student.current_activity || "",
-    guardian_name: student.guardian_name || "",
-    guardian_relation: student.guardian_relation || "",
-    guardian_phone: student.guardian_phone || "",
-    aadhaar_id: student.aadhaar_id || "",
+    place: student.place || "",
     lead_source: student.lead_source || "",
     photo_url: sanitizeCacheUrl(student.photo_url),
     aadhaar_document_url: sanitizeCacheUrl(student.aadhaar_document_url),
+    notes: student.notes || "",
     created_at: student.created_at || "",
+  };
+}
+
+function pickStudentDbColumns(student = {}) {
+  return {
+    student_code: student.student_code || null,
+    full_name: student.full_name || "",
+    email: student.email || "",
+    phone: student.phone || "",
+    current_activity: student.current_activity || "",
+    place: student.place || "",
+    photo_url: student.photo_url || "",
+    aadhaar_document_url: student.aadhaar_document_url || "",
+    lead_source: student.lead_source || "",
+    notes: student.notes || "",
   };
 }
 
@@ -431,7 +442,7 @@ function sanitizeCourseForCache(course = {}) {
   return {
     id: course.id || "",
     course_name: course.course_name || "",
-    batch: course.batch || "",
+    batch: normalizeBatchName(course.batch) || "",
     fee: course.fee ?? null,
     duration: course.duration || "",
     mode: course.mode || "",
@@ -562,7 +573,6 @@ function publishRuntimeDebugSnapshot(label, sessionUser, stateSnapshot = {}) {
   };
 
   window.__ENROLLEASE_RUNTIME__ = debugSnapshot;
-  console.log("EnrollEase runtime debug:", debugSnapshot);
 }
 
 function normalizeSupabaseShadowState(shadow) {
@@ -877,7 +887,6 @@ const csvImportFieldAliases = {
   alternate_phone: ["alternate_phone", "alternate phone", "alt phone", "alt_phone", "secondary phone"],
   address: ["address", "student address", "residential address"],
   place: ["place", "city", "location", "district", "town"],
-  college_name: ["college_name", "college name", "college", "clg", "institution", "school"],
   current_activity: ["current_activity", "current activity", "current qualification", "qualification", "activity", "status", "i am a"],
   guardian_name: ["guardian_name", "guardian name", "parent name", "father name", "mother name"],
   guardian_relation: ["guardian_relation", "guardian relation", "relation", "parent relation"],
@@ -906,7 +915,6 @@ const csvImportFieldAliases = {
   installments_planned: ["installments_planned", "installments planned", "number of installments", "emi count"],
   next_due_date: ["next_due_date", "next due date", "due date"],
   enrollment_status: ["enrollment_status", "enrollment status", "lead status", "status"],
-  verification_status: ["verification_status", "verification status"],
   remarks: ["remarks", "remark", "comments", "comment"],
   notes: ["notes", "note", "description"],
   pipeline_stage: ["pipeline_stage", "pipeline stage", "stage"],
@@ -1089,7 +1097,6 @@ function normalizeImportedCsvRow(row, rowIndex) {
     alternate_phone: getCsvImportValue(normalizedEntries, "alternate_phone"),
     address: getCsvImportValue(normalizedEntries, "address"),
     place: getCsvImportValue(normalizedEntries, "place"),
-    college_name: getCsvImportValue(normalizedEntries, "college_name"),
     current_activity: getCsvImportValue(normalizedEntries, "current_activity"),
     guardian_name: getCsvImportValue(normalizedEntries, "guardian_name"),
     guardian_relation: getCsvImportValue(normalizedEntries, "guardian_relation"),
@@ -1109,7 +1116,6 @@ function normalizeImportedCsvRow(row, rowIndex) {
     installments_planned: getCsvImportValue(normalizedEntries, "installments_planned"),
     next_due_date: getCsvImportValue(normalizedEntries, "next_due_date"),
     enrollment_status: getCsvImportValue(normalizedEntries, "enrollment_status"),
-    verification_status: getCsvImportValue(normalizedEntries, "verification_status"),
     pipeline_stage: getCsvImportValue(normalizedEntries, "pipeline_stage"),
     dropout_reason: getCsvImportValue(normalizedEntries, "dropout_reason"),
     remarks,
@@ -1235,10 +1241,6 @@ function extractGenderNameTokens(student = {}) {
   return [...fullNameTokens, ...emailTokens];
 }
 
-function hasSupportingDocuments(documents = []) {
-  return documents.some((item) => !["Student Photo", "Aadhaar ID Photo"].includes(item?.document_type));
-}
-
 function normalizeEmailLogType(emailType = "") {
   return String(emailType || "").trim().toLowerCase();
 }
@@ -1255,6 +1257,10 @@ function isFollowUpEmailLog(log = {}) {
 function isPaymentReminderEmailLog(log = {}) {
   const normalizedType = normalizeEmailLogType(log?.email_type);
   return normalizedType.includes("due reminder") || normalizedType.includes("payment reminder");
+}
+
+function isPaymentUpdateEmailLog(log = {}) {
+  return normalizeEmailLogType(log?.email_type).includes("payment update");
 }
 
 function isAdmissionConfirmationEmailLog(log = {}) {
@@ -1359,7 +1365,6 @@ function buildEnquiryProfileStatus(student, enrollment, course) {
     { label: "Email", value: student?.email },
     { label: "Interested Course", value: course?.course_name || enrollment?.course_name || enrollment?.course_id },
     { label: "Current Qualification", value: student?.current_activity },
-    { label: "College", value: student?.college_name },
     { label: "City", value: student?.place },
     { label: "Lead Source", value: student?.lead_source },
   ];
@@ -1450,8 +1455,14 @@ function normalizeEnrollmentForDisplay(enrollment, course) {
     followUpDate: effectiveFollowUpDate,
   });
   const paymentEligible = hasAdmissionLifecycleData(enrollment, pipelineStage);
+  const originalFee = paymentEligible
+    ? (toNumberOrNull(enrollment?.original_fee) ?? toNumberOrNull(enrollment?.total_fee) ?? Number(course?.fee || 0))
+    : (toNumberOrNull(enrollment?.original_fee) ?? toNumberOrNull(enrollment?.total_fee));
+  const discountType = enrollment?.discount_type || "";
+  const discountValue = toNumberOrNull(enrollment?.discount_value) || 0;
+  const discountAmount = resolveDiscountAmount(originalFee || 0, discountType, discountValue);
   const totalFee = paymentEligible
-    ? (toNumberOrNull(enrollment?.total_fee) ?? Number(course?.fee || 0))
+    ? resolvePayableFee(originalFee || enrollment?.total_fee || course?.fee || 0, discountType, discountValue)
     : toNumberOrNull(enrollment?.total_fee);
   const basePaymentHistory = paymentEligible
     ? normalizePaymentHistoryList(enrollment?.payment_history, {
@@ -1580,6 +1591,10 @@ function normalizeEnrollmentForDisplay(enrollment, course) {
     payment_eligible: paymentEligible,
     payment_plan: paymentPlan,
     payment_method: paymentMethod,
+    original_fee: originalFee || 0,
+    discount_type: discountType,
+    discount_value: discountValue,
+    discount_amount: discountAmount,
     total_fee: totalFee,
     amount_paid: amountPaid,
     installments_planned: installmentsPlanned,
@@ -1587,7 +1602,9 @@ function normalizeEnrollmentForDisplay(enrollment, course) {
     installment_amount: installmentAmount,
     next_due_date: nextDueDate,
     payment_status: paymentStatus,
-    verification_status: enrollment?.verification_status || "Pending",
+    verification_status: String(enrollment?.verification_status || "").trim().toLowerCase().includes(["cor", "rection"].join(""))
+      ? "Pending"
+      : (enrollment?.verification_status || "Pending"),
     enrollment_status: pipelineStage === "Dropout" ? "Dropped" : enrollmentStatus,
     dropout_date: pipelineStage === "Dropout" ? dropoutDate : "",
     dropout_reason:
@@ -1739,10 +1756,6 @@ function normalizeStatusPatch(currentEnrollment, patch) {
     nextPatch.enrolled_date = nextPatch.enrolled_date || currentEnrollment?.enrolled_date || toIsoDate(new Date());
   }
 
-  if (nextPatch.verification_status === "Requested Correction" && !hasValue(nextPatch.enrollment_status)) {
-    nextPatch.enrollment_status = "Follow-up";
-  }
-
   if (nextPatch.verification_status === "Rejected" && !hasValue(nextPatch.enrollment_status)) {
     nextPatch.enrollment_status = "Dropped";
   }
@@ -1796,11 +1809,8 @@ function toPortalRecords(students, enrollments, courses, documents) {
           isEnquiryRecord,
           isEnrolledRecord,
           isDropoutRecord,
-          verificationEligible: isEnrolledRecord,
-          documentEligible: isEnrolledRecord,
           profileCompletion: profileStatus.completion,
           missingInformation: profileStatus.missing,
-          hasSupportingDocuments: hasSupportingDocuments(recordDocuments),
         };
       } catch (error) {
         console.warn("Skipping malformed portal record:", enrollment?.id || "unknown-enrollment", error);
@@ -1818,10 +1828,10 @@ export function buildPortalRecords(students = [], enrollments = [], courses = []
 function buildDashboardMetrics(records) {
   const totalRecords = records.length;
   const pending = records.filter((record) => record.isEnquiryRecord).length;
-  const totalEnquiries = pending;
   const totalLeads = totalRecords;
   const totalEnrolled = records.filter((record) => record.isEnrolledRecord).length;
   const totalDropouts = records.filter((record) => record.isDropoutRecord).length;
+  const totalEnquiries = pending;
   const conversionRate = totalLeads ? Math.round((totalEnrolled / totalLeads) * 100) : 0;
   const emiStudents = records.filter((record) => isEmiEnrollment(record.enrollment) && record.paymentEligible).length;
   const clearedPayments = records.filter((record) => record.enrollment.payment_status === "Paid").length;
@@ -2718,7 +2728,11 @@ export function AppProvider({ children }) {
         ? "Enrolled"
         : "Enquiry";
     const paymentEligible = hasAdmissionLifecycleData(enrollment, pipelineStage);
-    const totalFee = paymentEligible ? Number(enrollment.total_fee || 0) : 0;
+    const originalFee = paymentEligible ? Number(enrollment.original_fee || enrollment.total_fee || 0) : 0;
+    const discountType = paymentEligible ? (enrollment.discount_type || "") : "";
+    const discountValue = paymentEligible ? Number(enrollment.discount_value || 0) : 0;
+    const discountAmount = paymentEligible ? resolveDiscountAmount(originalFee, discountType, discountValue) : 0;
+    const totalFee = paymentEligible ? resolvePayableFee(originalFee || enrollment.total_fee, discountType, discountValue) : 0;
     const amountPaid = paymentEligible ? Number(enrollment.amount_paid || 0) : 0;
     const paymentPlan = paymentEligible
       ? inferPaymentPlan({
@@ -2800,6 +2814,10 @@ export function AppProvider({ children }) {
       pipelineStage,
       paymentEligible,
       totalFee,
+      originalFee,
+      discountType,
+      discountValue,
+      discountAmount,
       amountPaid,
       paymentPlan,
       paymentMethod,
@@ -2840,6 +2858,10 @@ export function AppProvider({ children }) {
       leadDate,
       pipelineStage,
       totalFee,
+      originalFee,
+      discountType,
+      discountValue,
+      discountAmount,
       amountPaid,
       paymentPlan,
       paymentMethod,
@@ -2868,7 +2890,6 @@ export function AppProvider({ children }) {
       preferredCode: requestedStudentCode,
       generateIfBlank: !isEnquiryCreation,
     });
-
     if (!hasSupabaseEnv || !supabase) {
       const studentId = createId("student");
       const enrollmentId = createId("enrollment");
@@ -2899,6 +2920,10 @@ export function AppProvider({ children }) {
         last_payment_date: lastPaymentDate,
         payment_history: paymentHistory,
         total_fee: totalFee,
+        original_fee: originalFee,
+        discount_type: discountType,
+        discount_value: discountValue,
+        discount_amount: discountAmount,
         amount_paid: amountPaid,
       };
 
@@ -2942,16 +2967,16 @@ export function AppProvider({ children }) {
           silent: true,
         }).catch(() => {});
 
-        if (Number(amountPaid || 0) > 0) {
-          void sendPaymentEmail(enrollmentId, {
-            enrollment: enrollmentRecord,
-            student: studentRecord,
-            course: findCourseByReference(state.courses, [enrollmentRecord.course_id, enrollment.course_name]) || null,
-            paidAmount: amountPaid,
-            paymentDate: lastPaymentDate || enrolledDate || leadDate,
-            silent: true,
-          }).catch(() => {});
-        }
+      }
+      if (pipelineStage === "Enrolled" && Number(amountPaid || 0) > 0) {
+        void sendPaymentEmail(enrollmentId, {
+          enrollment: enrollmentRecord,
+          student: studentRecord,
+          course: findCourseByReference(state.courses, [enrollmentRecord.course_id, enrollment.course_name]) || null,
+          paidAmount: amountPaid,
+          paymentDate: lastPaymentDate || enrolledDate || leadDate,
+          silent: true,
+        }).catch(() => {});
       }
       void triggerEnrollmentSubmissionAutomation({
         studentRecord,
@@ -2968,36 +2993,18 @@ export function AppProvider({ children }) {
       });
 
       const normalizedEmail = student.email.trim().toLowerCase();
-      const studentPayload = isEnquiryCreation
-        ? {
-          student_code: resolvedStudentCode || null,
-          full_name: student.full_name,
-          email: normalizedEmail,
-          phone: student.phone,
-          college_name: student.college_name || "",
-          current_activity: student.current_activity || "",
-          place: student.place || "",
-          lead_source: student.lead_source || "Manual Form",
-        }
-        : {
-          student_code: resolvedStudentCode || null,
-          full_name: student.full_name,
-          email: normalizedEmail,
-          phone: student.phone,
-          alternate_phone: student.alternate_phone || "",
-          college_name: student.college_name || "",
-          current_activity: student.current_activity || "",
-          place: student.place || "",
-          address: student.address,
-          guardian_name: student.guardian_name,
-          guardian_relation: student.guardian_relation || "",
-          guardian_phone: student.guardian_phone,
-          aadhaar_id: student.aadhaar_id || "",
-          photo_url: student.photo_url || "",
-          aadhaar_document_url: student.aadhaar_document_url || "",
-          lead_source: student.lead_source || "Manual Form",
-          notes: student.notes || "",
-        };
+      const studentPayload = pickStudentDbColumns({
+        student_code: resolvedStudentCode,
+        full_name: student.full_name,
+        email: normalizedEmail,
+        phone: student.phone,
+        current_activity: student.current_activity || "",
+        place: student.place || "",
+        photo_url: isEnquiryCreation ? "" : (student.photo_url || ""),
+        aadhaar_document_url: isEnquiryCreation ? "" : (student.aadhaar_document_url || ""),
+        lead_source: student.lead_source || "Manual Form",
+        notes: isEnquiryCreation ? "" : (student.notes || ""),
+      });
 
       const { data: existingStudent, error: existingStudentError } = await supabase
         .from("students")
@@ -3052,7 +3059,7 @@ export function AppProvider({ children }) {
         : {
           student_id: studentRecord.id,
           course_id: selectedCourse.id,
-          batch: enrollment.batch,
+          batch: normalizeBatchName(enrollment.batch),
           pipeline_stage: pipelineStage,
           lead_date: leadDate,
           enrolled_date: enrolledDate || null,
@@ -3060,6 +3067,10 @@ export function AppProvider({ children }) {
           payment_method: paymentMethod,
           payment_plan: paymentPlan,
           total_fee: totalFee,
+          original_fee: originalFee,
+          discount_type: discountType,
+          discount_value: discountValue,
+          discount_amount: discountAmount,
           amount_paid: amountPaid,
           installments_planned: installmentsPlanned,
           installments_paid: installmentsPaid,
@@ -3125,31 +3136,31 @@ export function AppProvider({ children }) {
           silent: true,
         }).catch(() => {});
 
-        if (Number(amountPaid || 0) > 0) {
-          void sendPaymentEmail(enrollmentRecord.id, {
-            enrollment: {
-              ...enrollmentRecord,
-              course_name: selectedCourse.course_name || enrollment.course_name || "",
-              pipeline_stage: pipelineStage,
-              amount_paid: amountPaid,
-              total_fee: totalFee,
-              payment_status: paymentStatus,
-              payment_plan: paymentPlan,
-              payment_method: paymentMethod,
-              installments_planned: installmentsPlanned,
-              installments_paid: installmentsPaid,
-              installment_amount: installmentAmount,
-              last_payment_date: lastPaymentDate || null,
-              next_due_date: nextDueDate || null,
-              payment_history: paymentHistory,
-            },
-            student: studentRecord,
-            course: selectedCourse,
-            paidAmount: amountPaid,
-            paymentDate: lastPaymentDate || enrolledDate || leadDate,
-            silent: true,
-          }).catch(() => {});
-        }
+      }
+      if (pipelineStage === "Enrolled" && Number(amountPaid || 0) > 0) {
+        void sendPaymentEmail(enrollmentRecord.id, {
+          enrollment: {
+            ...enrollmentRecord,
+            course_name: selectedCourse.course_name || enrollment.course_name || "",
+            pipeline_stage: pipelineStage,
+            amount_paid: amountPaid,
+            total_fee: totalFee,
+            payment_status: paymentStatus,
+            payment_plan: paymentPlan,
+            payment_method: paymentMethod,
+            installments_planned: installmentsPlanned,
+            installments_paid: installmentsPaid,
+            installment_amount: installmentAmount,
+            last_payment_date: lastPaymentDate || null,
+            next_due_date: nextDueDate || null,
+            payment_history: paymentHistory,
+          },
+          student: studentRecord,
+          course: selectedCourse,
+          paidAmount: amountPaid,
+          paymentDate: lastPaymentDate || enrolledDate || leadDate,
+          silent: true,
+        }).catch(() => {});
       }
       void triggerEnrollmentSubmissionAutomation({
         studentRecord,
@@ -3174,6 +3185,10 @@ export function AppProvider({ children }) {
       leadDate,
       pipelineStage,
       totalFee,
+      originalFee,
+      discountType,
+      discountValue,
+      discountAmount,
       amountPaid,
       paymentPlan,
       paymentMethod,
@@ -3205,7 +3220,6 @@ export function AppProvider({ children }) {
       generateIfBlank: true,
       excludeStudentId: currentStudent.id,
     });
-
     if (!hasSupabaseEnv || !supabase) {
       const updatedStudentRecord = {
         ...currentStudent,
@@ -3224,6 +3238,10 @@ export function AppProvider({ children }) {
         payment_method: paymentMethod,
         payment_plan: paymentPlan,
         total_fee: totalFee,
+        original_fee: originalFee,
+        discount_type: discountType,
+        discount_value: discountValue,
+        discount_amount: discountAmount,
         amount_paid: amountPaid,
         installments_planned: installmentsPlanned,
         installments_paid: installmentsPaid,
@@ -3299,25 +3317,18 @@ export function AppProvider({ children }) {
       courseName: enrollment.course_name || currentEnrollment.course_name,
     });
 
-      const mergedStudentPayload = mergeStoredFields(currentStudent, {
+      const mergedStudentPayload = mergeStoredFields(currentStudent, pickStudentDbColumns({
         student_code: resolvedStudentCode,
         full_name: student.full_name,
         email: student.email?.trim().toLowerCase() || currentStudent.email,
         phone: student.phone,
-      alternate_phone: student.alternate_phone || "",
-      college_name: student.college_name || "",
-      current_activity: student.current_activity || "",
-      place: student.place || "",
-      address: student.address || "",
-      guardian_name: student.guardian_name || "",
-      guardian_relation: student.guardian_relation || "",
-      guardian_phone: student.guardian_phone || "",
-      aadhaar_id: student.aadhaar_id || "",
-      photo_url: student.photo_url || "",
-      aadhaar_document_url: student.aadhaar_document_url || "",
-      lead_source: student.lead_source || currentStudent.lead_source || "Manual Form",
-      notes: student.notes || "",
-    });
+        current_activity: student.current_activity || "",
+        place: student.place || "",
+        photo_url: student.photo_url || "",
+        aadhaar_document_url: student.aadhaar_document_url || "",
+        lead_source: student.lead_source || currentStudent.lead_source || "Manual Form",
+        notes: student.notes || "",
+      }));
 
     const { data: updatedStudent, error: studentUpdateError, removedColumns: removedStudentColumns = [] } = await runMutationWithSchemaRetry({
       tableName: "students",
@@ -3337,7 +3348,7 @@ export function AppProvider({ children }) {
 
     const enrollmentPayload = {
       course_id: selectedCourse.id,
-      batch: enrollment.batch,
+      batch: normalizeBatchName(enrollment.batch),
       pipeline_stage: pipelineStage,
       lead_date: leadDate,
       enrolled_date: enrolledDate || null,
@@ -3345,6 +3356,10 @@ export function AppProvider({ children }) {
       payment_method: paymentMethod,
       payment_plan: paymentPlan,
       total_fee: totalFee,
+      original_fee: originalFee,
+      discount_type: discountType,
+      discount_value: discountValue,
+      discount_amount: discountAmount,
       amount_paid: amountPaid,
       installments_planned: installmentsPlanned,
       installments_paid: installmentsPaid,
@@ -3516,7 +3531,11 @@ export function AppProvider({ children }) {
       throw new Error("Enrollment not found.");
     }
 
-    const totalFee = Number(patch?.total_fee ?? currentEnrollment.total_fee ?? 0) || 0;
+    const originalFee = Number(patch?.original_fee ?? currentEnrollment.original_fee ?? patch?.total_fee ?? currentEnrollment.total_fee ?? 0) || 0;
+    const discountType = patch?.discount_type ?? currentEnrollment.discount_type ?? "";
+    const discountValue = Number(patch?.discount_value ?? currentEnrollment.discount_value ?? 0) || 0;
+    const discountAmount = resolveDiscountAmount(originalFee, discountType, discountValue);
+    const totalFee = resolvePayableFee(originalFee, discountType, discountValue);
     const amountPaid = Number(patch?.amount_paid ?? resolveAmountPaid(currentEnrollment.amount_paid, currentEnrollment.payment_history) ?? 0) || 0;
     const requestedInstallmentsPlanned = Number(patch?.installments_planned ?? currentEnrollment.installments_planned ?? 0) || 0;
     const paymentPlan = inferPaymentPlan({
@@ -3572,6 +3591,10 @@ export function AppProvider({ children }) {
       history: paymentHistory,
     });
     const normalizedPatch = {
+      original_fee: originalFee,
+      discount_type: discountType,
+      discount_value: discountValue,
+      discount_amount: discountAmount,
       total_fee: totalFee,
       amount_paid: amountPaid,
       payment_plan: paymentPlan,
@@ -3597,7 +3620,6 @@ export function AppProvider({ children }) {
     if (timelineValidationMessage) {
       throw new Error(timelineValidationMessage);
     }
-
     if (!hasSupabaseEnv || !supabase) {
       commitLocalDb((draft) => ({
         ...draft,
@@ -3674,7 +3696,7 @@ export function AppProvider({ children }) {
       ? state.enrollments.find((item) => item.id === enrollmentId) || null
       : null;
 
-    const normalizedStudentPatch = { ...studentPatch };
+    const normalizedStudentPatch = pickStudentDbColumns({ ...studentPatch });
     if (Object.prototype.hasOwnProperty.call(normalizedStudentPatch, "email")) {
       normalizedStudentPatch.email = hasValue(normalizedStudentPatch.email)
         ? String(normalizedStudentPatch.email).trim().toLowerCase()
@@ -3703,6 +3725,7 @@ export function AppProvider({ children }) {
       if (timelineValidationMessage) {
         throw new Error(timelineValidationMessage);
       }
+
     }
 
     const nextStudentName = Object.prototype.hasOwnProperty.call(normalizedStudentPatch, "full_name")
@@ -3942,7 +3965,6 @@ export function AppProvider({ children }) {
             alternate_phone: row.alternate_phone || "",
             address: row.address || "",
             place: row.place || "",
-            college_name: row.college_name || "",
             current_activity: row.current_activity || "",
             guardian_name: row.guardian_name || "",
             guardian_relation: row.guardian_relation || "",
@@ -3959,7 +3981,7 @@ export function AppProvider({ children }) {
             id: enrollmentId,
             student_id: studentId,
             course_id: course?.id || "",
-            batch: row.batch || course?.batch || "",
+            batch: normalizeBatchName(row.batch || course?.batch),
             pipeline_stage: stage,
             lead_date: leadDate,
             enrolled_date: enrolledDate,
@@ -4081,25 +4103,18 @@ export function AppProvider({ children }) {
         reservedStudentCodes.add(resolvedStudentCode);
       }
 
-      const studentPayload = {
-        student_code: resolvedStudentCode || null,
+      const studentPayload = pickStudentDbColumns({
+        student_code: resolvedStudentCode,
         full_name: row.full_name,
         email: studentEmail,
         phone: row.phone || "",
-        alternate_phone: row.alternate_phone || "",
-        college_name: row.college_name || "",
         current_activity: row.current_activity || "",
         place: row.place || "",
-        address: row.address || "",
-        guardian_name: row.guardian_name || "",
-        guardian_relation: row.guardian_relation || "",
-        guardian_phone: row.guardian_phone || "",
-        aadhaar_id: row.aadhaar_id || "",
         photo_url: "",
         aadhaar_document_url: "",
         lead_source: row.lead_source || "CSV Upload",
         notes: row.notes || "",
-      };
+      });
 
       if (studentRecord) {
         const mergedStudentPayload = mergeStoredFields(studentRecord, studentPayload);
@@ -4136,7 +4151,7 @@ export function AppProvider({ children }) {
       const enrollmentPayload = {
         student_id: studentRecord.id,
         course_id: course?.id || "",
-        batch: row.batch || course?.batch || "",
+        batch: normalizeBatchName(row.batch || course?.batch),
         pipeline_stage: stage,
         lead_date: leadDate,
         enrolled_date: enrolledDate || null,
@@ -4343,7 +4358,7 @@ export function AppProvider({ children }) {
     const emailMessage = buildStudentIntakeInviteEmail({
       studentName: studentRecord.full_name,
       courseName: courseRecord?.course_name || enrollmentRecord.course_name || "Selected Course",
-      batchName: enrollmentRecord.batch || courseRecord?.batch || "",
+      batchName: normalizeBatchName(enrollmentRecord.batch || courseRecord?.batch),
       formUrl,
       expiryLabel,
     });
@@ -4468,7 +4483,7 @@ export function AppProvider({ children }) {
       courseRecord?.course_name || enrollmentRecord.course_name || "",
     );
     const emailVariant = options.emailVariant || "payment_update";
-    const reminderDate = toIsoDate(options.paymentDate || new Date());
+    const reminderDate = toIsoDate(options.paymentDate || getTodayIsoDate());
 
     if (emailVariant === "due_reminder") {
       const alreadyLoggedToday = hasEmailLogOnDate(
@@ -4533,7 +4548,9 @@ export function AppProvider({ children }) {
     if (!options.silent) {
       pushNotification({
         type: "success",
-        title: "Payment email queued",
+        title: emailVariant === "due_reminder"
+          ? "Payment reminder email sent successfully."
+          : "Payment email sent successfully.",
       });
     }
 
@@ -4806,12 +4823,8 @@ export function AppProvider({ children }) {
       remarks,
       verificationStatus: enrollmentRecord?.verification_status || "Pending",
     });
-    const automationResult = await triggerAutomation("document_verification", { enrollmentId, documentType, fileName: file.name });
     await refreshState(state.authUser);
     pushNotification({ type: "success", title: `${documentType} uploaded` });
-    if (!automationResult.success) {
-      pushNotification({ type: "warning", title: automationResult.message });
-    }
   };
 
   const allPortalRecords = useMemo(() => {
@@ -4887,6 +4900,35 @@ export function AppProvider({ children }) {
       return requiredCycles > 0 && successfulFollowUpCount < requiredCycles;
     });
 
+    const duePaymentUpdates = portalRecords.filter((record) => {
+      if (record.currentStage !== "Enrolled") {
+        return false;
+      }
+
+      if (!hasReachableStudentEmail(record.student?.email || "")) {
+        return false;
+      }
+
+      const amountPaid = Number(record.enrollment.amount_paid || 0);
+      if (amountPaid <= 0) {
+        return false;
+      }
+
+      const paymentUpdateAnchorDate = toIsoDate(
+        record.enrollment.last_payment_date || record.enrollment.enrolled_date || record.enrollment.lead_date || "",
+      );
+      if (!paymentUpdateAnchorDate) {
+        return false;
+      }
+
+      return !hasSuccessfulEmailOnOrAfter(
+        state.emailLogs,
+        record.enrollment.id,
+        isPaymentUpdateEmailLog,
+        paymentUpdateAnchorDate,
+      );
+    });
+
     const duePaymentReminders = portalRecords.filter((record) => {
       if (record.currentStage !== "Enrolled") {
         return false;
@@ -4920,7 +4962,7 @@ export function AppProvider({ children }) {
       ) && !hasPaymentReminderLock(record.enrollment.id, todayIsoDate);
     });
 
-    if (!dueFollowUps.length && !duePaymentReminders.length) {
+    if (!dueFollowUps.length && !duePaymentUpdates.length && !duePaymentReminders.length) {
       return;
     }
 
@@ -4940,6 +4982,30 @@ export function AppProvider({ children }) {
           await sendDashboardFollowUpEmail(record.enrollment.id, { silent: true });
         } catch {
           autoEmailTracker.current.followUp.delete(followUpKey);
+        }
+      }
+
+      for (const record of duePaymentUpdates) {
+        const paymentUpdateDate = toIsoDate(
+          record.enrollment.last_payment_date || record.enrollment.enrolled_date || record.enrollment.lead_date || "",
+        );
+        const paymentUpdateKey = `${record.enrollment.id}:${paymentUpdateDate}:payment-update`;
+        if (autoEmailTracker.current.paymentUpdate.has(paymentUpdateKey)) {
+          continue;
+        }
+
+        autoEmailTracker.current.paymentUpdate.add(paymentUpdateKey);
+        try {
+          await sendPaymentEmail(record.enrollment.id, {
+            enrollment: record.enrollment,
+            student: record.student,
+            course: record.course,
+            paidAmount: Number(record.enrollment.amount_paid || 0),
+            paymentDate: paymentUpdateDate,
+            silent: true,
+          });
+        } catch {
+          autoEmailTracker.current.paymentUpdate.delete(paymentUpdateKey);
         }
       }
 

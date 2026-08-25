@@ -1,4 +1,6 @@
 import { formatCurrency, formatDate } from "../utils/formatters";
+import { normalizeBatchName } from "../data/courseCatalog";
+import { isHiddenDropoutStudent } from "../utils/dropoutVisibility";
 import { resolveAmountPaid, resolveRemainingAmount } from "../utils/paymentHelpers";
 
 const AI_API_KEY = String(import.meta.env.VITE_AI_API_KEY || "").trim();
@@ -82,13 +84,6 @@ function extractQueryConcepts(query = "") {
       text.includes("overdue")
       || text.includes("late payment")
       || text.includes("missed payment"),
-    wantsVerificationPending:
-      text.includes("pending verification")
-      || text.includes("verification pending")
-      || text.includes("verify pending"),
-    wantsCorrection:
-      text.includes("correction")
-      || text.includes("requested correction"),
     wantsCurrent:
       text.includes("current")
       || text.includes("active")
@@ -122,13 +117,6 @@ function getMissingItems(record) {
     if (safeItem) items.push(safeItem);
   });
 
-  const documents = Array.isArray(record?.documents) ? record.documents : [];
-  const hasStudentPhoto = documents.some((item) => item.document_type === "Student Photo" && item.file_url);
-  const hasAadhaar = documents.some((item) => item.document_type === "Aadhaar ID Photo" && item.file_url);
-
-  if (!hasStudentPhoto) items.push("Student photo upload");
-  if (!hasAadhaar) items.push("Aadhaar ID upload");
-
   return [...new Set(items)];
 }
 
@@ -136,14 +124,12 @@ function getTimelineFlags(record) {
   const flags = [];
   const payment = getPaymentSummary(record);
   const stage = normalizeText(record?.currentStage);
-  const verificationStatus = normalizeText(record?.enrollment?.verification_status) || "Pending";
   const paymentStatus = normalizeText(record?.enrollment?.payment_status) || "Pending";
   const followUpDate = normalizeText(record?.enrollment?.follow_up_date);
   const nextDueDate = normalizeText(record?.enrollment?.next_due_date);
 
   if (stage === "Dropout") flags.push("Dropped out");
   if (stage === "Enquiry") flags.push("Still in enquiry stage");
-  if (stage !== "Dropout" && verificationStatus && verificationStatus !== "Approved") flags.push(`Verification is ${verificationStatus.toLowerCase()}`);
   if (payment.dueAmount > 0) flags.push(`Outstanding balance ${formatCurrency(payment.dueAmount)}`);
   if (paymentStatus === "Overdue") flags.push("Payment is overdue");
   if (followUpDate) flags.push(`Follow-up date ${formatDate(followUpDate)}`);
@@ -163,8 +149,6 @@ function getPriorityScore(record) {
   if (normalizeText(record?.enrollment?.payment_status) === "Overdue") score += 35;
   if (payment.dueAmount > 0) score += Math.min(30, Math.round(payment.dueAmount / 5000) * 4);
   if (missingItems.length) score += Math.min(24, missingItems.length * 8);
-  if (normalizeText(record?.enrollment?.verification_status) === "Pending") score += 12;
-  if (normalizeText(record?.enrollment?.verification_status) === "Requested Correction") score += 18;
 
   return score;
 }
@@ -230,7 +214,7 @@ function getRecordFingerprint(record) {
   return [
     normalizeKey(student.email || student.phone || student.full_name),
     normalizeKey(record?.course?.course_name || enrollment.course_name),
-    normalizeKey(enrollment.batch),
+    normalizeKey(normalizeBatchName(enrollment.batch)),
     normalizeKey(record?.currentStage),
     normalizeKey(enrollment.enrolled_date || enrollment.lead_date),
   ].join("|");
@@ -239,7 +223,9 @@ function getRecordFingerprint(record) {
 export function buildCopilotRecordSet(portalRecords = []) {
   const latestById = new Map();
 
-  portalRecords.forEach((record) => {
+  portalRecords
+    .filter((record) => !(record?.isDropoutRecord && isHiddenDropoutStudent(record)))
+    .forEach((record) => {
     if (!record?.id) return;
     const existing = latestById.get(record.id);
     if (!existing || getSortTimestamp(record) >= getSortTimestamp(existing)) {
@@ -276,12 +262,11 @@ function buildOverview(record) {
   const studentName = getRecordLabel(record);
   const courseName = normalizeText(record?.course?.course_name || record?.enrollment?.course_name) || "Course pending";
   const stage = normalizeText(record?.currentStage) || "Unknown";
-  const verificationStatus = normalizeText(record?.enrollment?.verification_status) || "Pending";
   const paymentStatus = normalizeText(record?.enrollment?.payment_status) || "Pending";
 
   return [
     `${studentName} is currently in the ${stage.toLowerCase()} stage for ${courseName}.`,
-    `Verification is ${verificationStatus.toLowerCase()} and payment status is ${paymentStatus.toLowerCase()}.`,
+    `Payment status is ${paymentStatus.toLowerCase()}.`,
     payment.totalFee > 0
       ? `The total fee is ${formatCurrency(payment.totalFee)}, ${formatCurrency(payment.amountPaid)} is paid, and ${formatCurrency(payment.dueAmount)} remains.`
       : "Course fee is not fully set yet, so payment follow-up should wait until the fee is confirmed.",
@@ -292,11 +277,8 @@ function buildNextSteps(record) {
   const steps = [];
   const missingItems = getMissingItems(record);
   const payment = getPaymentSummary(record);
-  const verificationStatus = normalizeText(record?.enrollment?.verification_status) || "Pending";
 
   if (missingItems.length) steps.push(`Collect or re-upload: ${missingItems.join(", ")}.`);
-  if (verificationStatus === "Pending") steps.push("Review uploaded documents and either approve them or request a correction.");
-  if (verificationStatus === "Requested Correction") steps.push("Send a correction-focused follow-up listing the exact items to fix.");
   if (record?.isEnquiryRecord) steps.push("Move the lead toward enrollment by confirming course, batch, fee, and a target enrollment date.");
   if (payment.dueAmount > 0) steps.push(`Follow up on the pending balance of ${formatCurrency(payment.dueAmount)} and confirm the next payment date.`);
   if (!steps.length) steps.push("This profile looks healthy. Keep the student warm with a short progress update and monitor the next milestone.");
@@ -309,26 +291,20 @@ function buildFollowUpMessage(record) {
   const courseName = normalizeText(record?.course?.course_name || record?.enrollment?.course_name) || "your selected course";
   const missingItems = getMissingItems(record);
   const payment = getPaymentSummary(record);
-  const verificationStatus = normalizeText(record?.enrollment?.verification_status) || "Pending";
 
   const lines = [
     `Hi ${studentName},`,
     "",
-    `This is a quick update from the admissions team regarding ${courseName}.`,
+    `This is a quick update from the CERTISURED admissions team regarding ${courseName}.`,
   ];
 
   if (missingItems.length) lines.push(`We still need the following to continue your admission smoothly: ${missingItems.join(", ")}.`);
-  if (verificationStatus === "Requested Correction") {
-    lines.push("Our team reviewed the submitted details and a few corrections are still needed before approval.");
-  } else if (verificationStatus === "Pending") {
-    lines.push("Your profile is under review and we want to help you complete the remaining steps quickly.");
-  }
   if (payment.dueAmount > 0) lines.push(`There is also a pending balance of ${formatCurrency(payment.dueAmount)} on your enrollment.`);
 
   lines.push("Please reply to this message or contact our team once the pending step is completed.");
   lines.push("");
   lines.push("Regards,");
-  lines.push("Admissions Team");
+  lines.push("CERTISURED Admissions Team");
 
   return lines.join("\n");
 }
@@ -354,7 +330,7 @@ function buildWhatsAppMessage(record, variant = "follow_up") {
     `Hi ${studentName}, this is a quick admissions follow-up from CERTISURED for ${courseName}.`,
     missingItems.length
       ? `We still need ${missingItems.join(", ")} to move your profile forward.`
-      : "Your profile is under review and we are helping you complete the next step.",
+      : "We are helping you complete the next admission step.",
     "Reply here once done and our team will assist you further.",
   ].join(" ");
 }
@@ -383,8 +359,7 @@ function toRecordSummary(record) {
     studentName: getRecordLabel(record),
     courseName: normalizeText(record?.course?.course_name || record?.enrollment?.course_name) || "Course pending",
     stage: normalizeText(record?.currentStage) || "Unknown",
-    batch: normalizeText(record?.enrollment?.batch) || "N/A",
-    verificationStatus: normalizeText(record?.enrollment?.verification_status) || "Pending",
+    batch: normalizeBatchName(record?.enrollment?.batch) || "N/A",
     paymentStatus: normalizeText(record?.enrollment?.payment_status) || "Pending",
     dueAmount: payment.dueAmount,
     followUpDate: normalizeText(record?.enrollment?.follow_up_date),
@@ -415,9 +390,8 @@ function recordMatchesQuery(record, tokens = []) {
     record.student?.phone,
     record.course?.course_name,
     record.enrollment?.course_name,
-    record.enrollment?.batch,
+    normalizeBatchName(record.enrollment?.batch),
     record.currentStage,
-    record.enrollment?.verification_status,
     record.enrollment?.payment_status,
     record.enrollment?.remarks,
     record.enrollment?.lead_date,
@@ -443,8 +417,6 @@ function recordMatchesConcepts(record, concepts) {
   if (concepts.wantsDropout && normalizeKey(record?.currentStage) !== "dropout") return false;
   if (concepts.wantsEnquiry && normalizeKey(record?.currentStage) !== "enquiry") return false;
   if (concepts.wantsEnrolled && normalizeKey(record?.currentStage) !== "enrolled") return false;
-  if (concepts.wantsVerificationPending && normalizeKey(record?.enrollment?.verification_status) !== "pending") return false;
-  if (concepts.wantsCorrection && normalizeKey(record?.enrollment?.verification_status) !== "requested correction") return false;
   if (concepts.wantsPaid && normalizeKey(record?.enrollment?.payment_status) !== "paid") return false;
   if (concepts.wantsOverdue && normalizeKey(record?.enrollment?.payment_status) !== "overdue") return false;
 
@@ -475,12 +447,6 @@ function applyIntentFilters(records = [], query = "") {
   let filtered = [...records];
   const isDropoutQuery = concepts.wantsDropout;
 
-  if (text.includes("pending verification") || text.includes("verification pending")) {
-    filtered = filtered.filter((record) => normalizeKey(record?.enrollment?.verification_status) === "pending");
-  }
-  if (text.includes("requested correction") || text.includes("correction")) {
-    filtered = filtered.filter((record) => normalizeKey(record?.enrollment?.verification_status) === "requested correction");
-  }
   if (isDropoutQuery) {
     filtered = filtered.filter((record) => normalizeKey(record?.currentStage) === "dropout");
   }
@@ -498,9 +464,6 @@ function applyIntentFilters(records = [], query = "") {
   }
   if (text.includes("paid")) {
     filtered = filtered.filter((record) => normalizeKey(record?.enrollment?.payment_status) === "paid");
-  }
-  if (text.includes("missing docs") || text.includes("missing documents") || text.includes("documents missing")) {
-    filtered = filtered.filter((record) => getMissingItems(record).length > 0);
   }
   if (text.includes("payment due") || text.includes("due amount") || text.includes("pending balance")) {
     filtered = filtered.filter((record) => getPaymentSummary(record).dueAmount > 0);
@@ -567,7 +530,7 @@ function buildLookupResponse(query, matchedRecords) {
     ...matchedRecords.map((record, index) => {
       const summary = toRecordSummary(record);
       const dueLabel = summary.dueAmount > 0 ? formatCurrency(summary.dueAmount) : "No due amount";
-      return `${index + 1}. ${summary.studentName} · ${summary.stage} · ${summary.courseName} · ${summary.verificationStatus} · ${summary.paymentStatus} · ${dueLabel}`;
+      return `${index + 1}. ${summary.studentName} · ${summary.stage} · ${summary.courseName} · ${summary.paymentStatus} · ${dueLabel}`;
     }),
   ];
 
@@ -577,9 +540,12 @@ function buildLookupResponse(query, matchedRecords) {
 function buildSystemPrompt() {
   return [
     "You are an admissions copilot for an Indian education institute.",
+    "The institute name is CERTISURED.",
     "Use the structured record data only.",
     "Do not invent students, statuses, or counts.",
     "When matchedRecords are provided, answer only from those records.",
+    "When drafting an email, mail, message, or follow-up, make it clear the message is from CERTISURED.",
+    "Keep answers focused on course, payment, follow-up, and enrollment status.",
     "Keep the answer operational, neat, and short.",
   ].join(" ");
 }
@@ -619,7 +585,6 @@ function buildAgentRecordCatalog(records = []) {
       stage: summary.stage,
       courseName: summary.courseName,
       batch: summary.batch,
-      verificationStatus: summary.verificationStatus,
       paymentStatus: summary.paymentStatus,
       dueAmount: summary.dueAmount,
       followUpDate: summary.followUpDate,
@@ -638,7 +603,9 @@ function buildStructuredAgentPrompt({ intent, query, portalRecord, portalRecords
         "Understand natural wording, typos, shorthand, and mixed phrasing.",
         "Do not invent students, statuses, or counts.",
         "If the user asks for filtered students, include only those actually matching the request.",
+        "If the user asks to draft a mail, email, message, or follow-up, write the draft as coming from CERTISURED.",
         "Prefer current active data over old interpretations.",
+        "Do not talk about document review, document approval, document rejection, or document status-checking.",
         "Return valid JSON only.",
       ],
       output_schema: {
@@ -820,7 +787,7 @@ function buildFallbackResponse({ intent, query, portalRecord, matchedRecords, so
   }
 
   if (!portalRecord) {
-    return "Select a record or ask a direct question like 'show pending verification students' or 'show Chandraka only'.";
+    return "Select a record or ask a direct question like 'show overdue payments' or 'show Chandraka only'.";
   }
 
   if (intent === "summary") {

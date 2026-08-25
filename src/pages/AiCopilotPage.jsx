@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import AppShell from "../components/AppShell";
 import PageHeader from "../components/PageHeader";
 import { useApp } from "../context/AppContext";
+import { normalizeBatchName } from "../data/courseCatalog";
 import {
   buildCopilotRecordSet,
   generateAdmissionsCopilotResponse,
@@ -10,8 +11,7 @@ import {
 import { formatCurrency, formatDate } from "../utils/formatters";
 import { resolveAmountPaid, resolveRemainingAmount } from "../utils/paymentHelpers";
 
-const AGENT_IMAGE = "https://www.blockchain-council.org/_next/image/?url=%2Fblog-media%2Fposts%2Fbb618010-070%2Fgemini-sparks-what-googles-always-on-ai-agent-could-mean-for-users-and-enterpris.jpg&w=1920&q=75";
-const HEADER_IMAGE = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTPHKrrvnRtBOtwSIaa92E9qUkmryQA8iJWM10js5C38A&s=10";
+const AI_COPILOT_MARQUEE_IMAGE = "https://www.k2view.com/hs-fs/hubfs/AI%20Agents.jpg?width=1024&height=512&name=AI%20Agents.jpg";
 
 function ActionChip({ active, children, onClick }) {
   return (
@@ -31,9 +31,7 @@ function DetailPill({ label, value }) {
   const normalized = String(label || "").toLowerCase();
   let tone = "from-slate-50 via-white to-slate-100 border-white/80";
 
-  if (normalized.includes("verification")) {
-    tone = "from-sky-50 via-cyan-50 to-blue-100 border-sky-100/90";
-  } else if (normalized.includes("payment")) {
+  if (normalized.includes("payment")) {
     tone = "from-violet-50 via-fuchsia-50 to-indigo-100 border-violet-100/90";
   } else if (normalized.includes("follow")) {
     tone = "from-emerald-50 via-teal-50 to-cyan-100 border-emerald-100/90";
@@ -62,7 +60,7 @@ function getRecordSearchText(record) {
     record.student?.student_code,
     record.student?.email,
     record.course?.course_name,
-    record.enrollment?.batch,
+    normalizeBatchName(record.enrollment?.batch),
     record.currentStage,
   ]
     .filter(Boolean)
@@ -85,6 +83,23 @@ function toEmailHtml(text = "") {
       ? `<p style="margin:0 0 14px;font-size:15px;line-height:1.8;color:#42556d;">${line}</p>`
       : "<div style=\"height:8px\"></div>"))
     .join("");
+}
+
+function extractDraftSubject(text = "", fallbackSubject = "Admissions Update - CERTISURED") {
+  const subjectLine = String(text || "")
+    .split("\n")
+    .find((line) => line.trim().toLowerCase().startsWith("subject:"));
+
+  const subject = subjectLine?.replace(/^subject:\s*/i, "").trim();
+  return subject || fallbackSubject;
+}
+
+function stripDraftSubject(text = "") {
+  return String(text || "")
+    .split("\n")
+    .filter((line) => !line.trim().toLowerCase().startsWith("subject:"))
+    .join("\n")
+    .trim();
 }
 
 function RecordListItem({ record, active, onSelect }) {
@@ -115,7 +130,7 @@ function RecordListItem({ record, active, onSelect }) {
         </span>
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600">
-        <p>Batch: {record.enrollment?.batch || "N/A"}</p>
+        <p>Batch: {normalizeBatchName(record.enrollment?.batch) || "N/A"}</p>
         <p>Payment: {record.enrollment?.payment_status || "Pending"}</p>
         <p>Follow-up: {formatDate(record.enrollment?.follow_up_date)}</p>
         <p>Due: {payment.totalFee ? formatCurrency(payment.dueAmount) : "N/A"}</p>
@@ -134,7 +149,7 @@ export default function AiCopilotPage() {
   const [sendingDraft, setSendingDraft] = useState(false);
   const [result, setResult] = useState({
     mode: "guided_local",
-    answer: "Ask anything from the current app data and the agent will answer from those records only.",
+    answer: "",
     matchedRecords: [],
     suggestions: [],
   });
@@ -204,32 +219,55 @@ export default function AiCopilotPage() {
     }
   };
 
+  const emailRecipientRecords = useMemo(() => {
+    const matchedIds = new Set((result.matchedRecords || []).map((record) => record.id).filter(Boolean));
+    const matchedFullRecords = matchedIds.size
+      ? copilotRecords.filter((record) => matchedIds.has(record.id))
+      : [];
+
+    return matchedFullRecords.length ? matchedFullRecords : (selectedRecord ? [selectedRecord] : []);
+  }, [copilotRecords, result.matchedRecords, selectedRecord]);
+
   const handleSendDraftEmail = async () => {
-    if (!selectedRecord || !result.answer) return;
+    if (!emailRecipientRecords.length || !result.answer) return;
 
     try {
       setSendingDraft(true);
       const emailType = intent === "follow_up" ? "AI Follow-up Draft" : "AI Copilot Update";
-      const subject = intent === "follow_up"
-        ? `Admissions Follow-up - ${selectedRecord.student?.full_name || "Student"}`
-        : `Admissions Update - ${selectedRecord.student?.full_name || "Student"}`;
-
-      await logEmail(emailType, selectedRecord.enrollment, {
-        student: selectedRecord.student,
-        course: selectedRecord.course || selectedRecord.enrollment?.course_name || "",
-        currentStage: selectedRecord.currentStage || "",
-        subject,
-        text: result.answer,
-        html: `
-          <div style="margin:0;padding:24px;background:#eef4fb;font-family:'Plus Jakarta Sans',Arial,sans-serif;color:#10233c;">
-            <div style="max-width:680px;margin:0 auto;background:#ffffff;border:1px solid #dbe8f7;border-radius:28px;overflow:hidden;box-shadow:0 22px 50px rgba(15,23,42,0.08);padding:32px;">
-              ${toEmailHtml(result.answer)}
-            </div>
+      const fallbackSubject = intent === "follow_up"
+        ? "Admissions Follow-up - CERTISURED"
+        : "Admissions Update - CERTISURED";
+      const subject = extractDraftSubject(result.answer, fallbackSubject);
+      const emailText = stripDraftSubject(result.answer) || result.answer;
+      const emailHtml = `
+        <div style="margin:0;padding:24px;background:#eef4fb;font-family:'Plus Jakarta Sans',Arial,sans-serif;color:#10233c;">
+          <div style="max-width:680px;margin:0 auto;background:#ffffff;border:1px solid #dbe8f7;border-radius:28px;overflow:hidden;box-shadow:0 22px 50px rgba(15,23,42,0.08);padding:32px;">
+            ${toEmailHtml(emailText)}
           </div>
-        `,
-        logType: emailType,
-        successTitle: "Agent email sent successfully.",
-      });
+        </div>
+      `;
+
+      for (const record of emailRecipientRecords) {
+        await logEmail(emailType, record.enrollment, {
+          student: record.student,
+          course: record.course || record.enrollment?.course_name || "",
+          currentStage: record.currentStage || "",
+          subject,
+          text: emailText,
+          html: emailHtml,
+          logType: emailType,
+          silent: emailRecipientRecords.length > 1,
+          successTitle: "Agent email sent successfully.",
+        });
+      }
+
+      setResult((prev) => ({
+        ...prev,
+        suggestions: [
+          `Email sent to ${emailRecipientRecords.length} matched student${emailRecipientRecords.length === 1 ? "" : "s"}.`,
+          ...(prev.suggestions || []),
+        ],
+      }));
     } finally {
       setSendingDraft(false);
     }
@@ -241,16 +279,18 @@ export default function AiCopilotPage() {
         eyebrow="AI Agent"
         title="Admissions Agent"
         description="Ask anything and get answers only from the current app data."
-        actions={(
-          <div className="group overflow-hidden rounded-[20px] border border-sky-100/80 bg-white/80 p-1 shadow-[0_14px_30px_rgba(148,163,184,0.14)] backdrop-blur-sm">
-            <img
-              src={HEADER_IMAGE}
-              alt="AI agent icon"
-              className="h-16 w-16 rounded-[16px] object-cover transition duration-500 group-hover:scale-105 sm:h-20 sm:w-20"
-            />
-          </div>
-        )}
       />
+
+      <div className="ai-copilot-marquee my-6">
+        <div className="ai-copilot-marquee-track" aria-hidden="true">
+          <img
+            src={AI_COPILOT_MARQUEE_IMAGE}
+            alt=""
+            className="ai-copilot-marquee-image"
+            loading="eager"
+          />
+        </div>
+      </div>
 
       <section className="relative overflow-hidden rounded-[36px] bg-[radial-gradient(circle_at_top_left,rgba(125,211,252,0.26),transparent_28%),radial-gradient(circle_at_bottom_left,rgba(250,204,21,0.22),transparent_24%),radial-gradient(circle_at_top_right,rgba(147,197,253,0.2),transparent_26%),linear-gradient(180deg,#f8fbff_0%,#eef4fb_100%)] p-4 md:p-5">
         <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[linear-gradient(180deg,rgba(255,255,255,0.52),transparent)]" />
@@ -299,7 +339,7 @@ export default function AiCopilotPage() {
                         {selectedRecord.student?.full_name || "Unnamed student"}
                       </h2>
                       <p className="mt-1 text-sm text-slate-600">
-                        {selectedRecord.course?.course_name || selectedRecord.enrollment?.course_name || "Course pending"} · {selectedRecord.currentStage || "Unknown"} · {selectedRecord.enrollment?.batch || "Batch pending"}
+                        {selectedRecord.course?.course_name || selectedRecord.enrollment?.course_name || "Course pending"} · {selectedRecord.currentStage || "Unknown"} · {normalizeBatchName(selectedRecord.enrollment?.batch) || "Batch pending"}
                       </p>
                       {selectedUrgency ? (
                         <span className={`mt-3 inline-flex rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] shadow-[0_8px_20px_rgba(148,163,184,0.12)] ${urgencyBadgeClass(selectedUrgency.level)}`}>
@@ -312,8 +352,7 @@ export default function AiCopilotPage() {
                   )}
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  <DetailPill label="Verification" value={selectedRecord?.currentStage === "Dropout" ? "Not needed" : (selectedRecord?.enrollment?.verification_status || "Pending")} />
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   <DetailPill label="Payment" value={selectedRecord?.enrollment?.payment_status || "Pending"} />
                   <DetailPill label="Follow-up" value={formatDate(selectedRecord?.enrollment?.follow_up_date)} />
                   <DetailPill label="Due amount" value={selectedPayment?.totalFee ? formatCurrency(selectedPayment.dueAmount) : "N/A"} />
@@ -349,7 +388,7 @@ export default function AiCopilotPage() {
                       setQuery("");
                       setResult({
                         mode: "guided_local",
-                        answer: "Ask anything from the current app data and the agent will answer from those records only.",
+                        answer: "",
                         matchedRecords: [],
                         suggestions: [],
                       });
@@ -361,20 +400,22 @@ export default function AiCopilotPage() {
                     type="button"
                     className="button-secondary"
                     onClick={() => void handleSendDraftEmail()}
-                    disabled={!selectedRecord || !result.answer || sendingDraft}
+                    disabled={!emailRecipientRecords.length || !result.answer || sendingDraft}
                   >
-                    {sendingDraft ? "Sending..." : "Send email"}
+                    {sendingDraft ? "Sending..." : emailRecipientRecords.length > 1 ? `Send ${emailRecipientRecords.length} emails` : "Send email"}
                   </button>
                 </div>
 
-                <div className="mt-6 rounded-[24px] border border-sky-100/90 bg-[linear-gradient(145deg,rgba(239,249,255,0.98),rgba(247,250,255,0.96)_55%,rgba(238,242,255,0.98))] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_16px_38px_rgba(125,211,252,0.14)] transition duration-300 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_22px_44px_rgba(96,165,250,0.18)]">
-                  <p className="bg-gradient-to-r from-sky-700 via-cyan-600 to-indigo-600 bg-clip-text text-[11px] font-bold uppercase tracking-[0.24em] text-transparent">
-                    Answer
-                  </p>
-                  <div className="mt-3 whitespace-pre-line text-sm leading-7 text-slate-700 transition duration-300 hover:text-slate-800">
-                    {result.answer}
+                {result.answer ? (
+                  <div className="mt-6 rounded-[24px] border border-sky-100/90 bg-[linear-gradient(145deg,rgba(239,249,255,0.98),rgba(247,250,255,0.96)_55%,rgba(238,242,255,0.98))] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_16px_38px_rgba(125,211,252,0.14)] transition duration-300 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_22px_44px_rgba(96,165,250,0.18)]">
+                    <p className="bg-gradient-to-r from-sky-700 via-cyan-600 to-indigo-600 bg-clip-text text-[11px] font-bold uppercase tracking-[0.24em] text-transparent">
+                      Answer
+                    </p>
+                    <div className="mt-3 whitespace-pre-line text-sm leading-7 text-slate-700 transition duration-300 hover:text-slate-800">
+                      {result.answer}
+                    </div>
                   </div>
-                </div>
+                ) : null}
 
                 {result.matchedRecords?.length ? (
                   <div className="mt-6 rounded-[24px] border border-sky-100 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(245,250,255,0.94))] p-5 shadow-[0_16px_40px_rgba(148,163,184,0.12)]">
@@ -395,15 +436,14 @@ export default function AiCopilotPage() {
                                 {record.studentName}
                               </p>
                               <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 transition duration-300 group-hover:tracking-[0.22em] group-hover:text-sky-700">
-                                {record.stage} · {record.courseName} · {record.batch}
+                                {record.stage} · {record.courseName} · {normalizeBatchName(record.batch) || "N/A"}
                               </p>
                             </div>
                             <span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em] ${urgencyBadgeClass(record.urgencyLevel)}`}>
                               {record.urgencyLevel}
                             </span>
                           </div>
-                          <div className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-3">
-                            <p>Verification: {record.stage === "Dropout" ? "Not needed" : record.verificationStatus}</p>
+                          <div className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
                             <p>Payment: {record.paymentStatus}</p>
                             <p>Due: {record.dueAmount > 0 ? formatCurrency(record.dueAmount) : "No due amount"}</p>
                           </div>
@@ -415,14 +455,6 @@ export default function AiCopilotPage() {
               </div>
 
               <div className="space-y-6">
-                <section className="panel group overflow-hidden border-white/70 p-0 shadow-[0_28px_70px_rgba(29,111,165,0.22)]">
-                  <img
-                    src={AGENT_IMAGE}
-                    alt="AI agent visual"
-                    className="h-[240px] w-full object-cover transition duration-700 group-hover:scale-[1.04]"
-                  />
-                </section>
-
                 <div className="panel border-white/75 bg-white/88 p-5 shadow-[0_26px_60px_rgba(148,163,184,0.16)] backdrop-blur-sm md:p-6">
                   <p className="section-kicker">Action items</p>
                   <div className="mt-4 space-y-3">

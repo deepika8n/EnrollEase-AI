@@ -1,24 +1,40 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import BrandLogo from "../components/BrandLogo";
+import heroSlideOne from "../assets/enrollment-hero.png";
 import { decorateCourseRecord, publicCourseCatalog } from "../data/courseCatalog";
 import { supabase, hasSupabaseEnv } from "../lib/supabase";
 import { loadPublicCourses } from "../services/mailerService";
-import heroSlide1 from "../assets/hero-slide-2.png";
-import heroSlide3 from "../assets/enrollment-hero.png";
-
-const slides = [
-  { image: heroSlide1, title: "Smart admission tracking" },
-  { image: heroSlide3, title: "Clean enrollment workflows" },
-];
 
 const heroWords = [
-  "Transforming",
-  "Student",
+  "Smart",
   "Admissions",
-  "Into",
-  "Intelligent",
-  "Decisions",
+  "For",
+  "Students",
+  "And",
+  "Admins",
+];
+
+const courseCardThemes = [
+  { start: "#0f3b7a", mid: "#2563eb", end: "#16a34a", backStart: "#062047", backEnd: "#0f9f8f" },
+  { start: "#7c2d12", mid: "#f97316", end: "#facc15", backStart: "#451a03", backEnd: "#dc2626" },
+  { start: "#134e4a", mid: "#0d9488", end: "#22c55e", backStart: "#042f2e", backEnd: "#0891b2" },
+  { start: "#581c87", mid: "#9333ea", end: "#ec4899", backStart: "#2e1065", backEnd: "#be185d" },
+  { start: "#7f1d1d", mid: "#dc2626", end: "#f97316", backStart: "#450a0a", backEnd: "#b45309" },
+];
+
+const heroSlides = [
+  { src: heroSlideOne, alt: "Student admissions consultation", className: "object-[68%_50%]" },
+  {
+    src: "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcRHP0YkPJ8uxJPWVFxq5q9kLb5-dVKIIlqkciydtcVV3QwIrkRj",
+    alt: "AI admissions workflow illustration",
+    className: "object-center",
+  },
+  {
+    src: "https://admissionshub.in/wp-content/uploads/2026/06/Expert-Admission-Counselor-in-Delhi-for-Hassle-Free-College-University-Admissions.jpg",
+    alt: "Expert admission counselling session",
+    className: "object-center",
+  },
 ];
 
 const hiringPartners = [
@@ -43,6 +59,42 @@ const WORD_STAGGER_MS = 250;
 const HEADING_HOLD_MS = 3000;
 const HEADING_FADE_MS = 500;
 const CTA_REVEAL_DELAY_MS = 250;
+const courseAdvisorInitialForm = {
+  education: "",
+  skills: "",
+  job: "",
+};
+
+const COURSE_ADVISOR_IMAGE_URL = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQbaQQLqmAVPqF9OQhZ3niUJseOl143YB2Gn0bez1bX1w&s=10";
+const courseAdvisorQuote = "Choose the course that fits your next role, not just the course that sounds popular.";
+
+const courseAdvisorSignals = {
+  "Agentic AI": {
+    keywords: ["ai", "agent", "automation", "chatgpt", "prompt", "llm", "workflow", "python", "developer", "operations", "product"],
+    reason: "You seem ready for automation, AI tools, and workflow-building projects.",
+    nextStep: "Start with Agentic AI if you want to build smarter automations and AI-powered apps.",
+  },
+  "Data Science": {
+    keywords: ["data", "analytics", "excel", "sql", "power bi", "statistics", "math", "bsc", "commerce", "report", "dashboard", "analyst"],
+    reason: "Your profile points toward dashboards, reporting, and decision-making with data.",
+    nextStep: "Pick Data Science if you enjoy finding patterns, making reports, and solving business questions.",
+  },
+  "Full Stack Development": {
+    keywords: ["web", "html", "css", "javascript", "react", "node", "frontend", "backend", "app", "btech", "computer", "software", "developer"],
+    reason: "Your inputs match app-building, coding, and software development skills.",
+    nextStep: "Choose Full Stack Development if you want to build complete websites and applications.",
+  },
+  "Python Programming": {
+    keywords: ["beginner", "fresher", "student", "12th", "puc", "basic", "coding", "logic", "python", "non technical", "start"],
+    reason: "This looks like a strong foundation-first path for building coding confidence.",
+    nextStep: "Begin with Python Programming if you want a practical, friendly entry into tech.",
+  },
+  "Digital Marketing": {
+    keywords: ["marketing", "sales", "seo", "social media", "instagram", "content", "ads", "business", "mba", "brand", "creative", "communication"],
+    reason: "Your profile leans toward growth, communication, campaigns, and brand visibility.",
+    nextStep: "Go with Digital Marketing if you like strategy, content, ads, and customer growth.",
+  },
+};
 
 function formatCourseFee(value) {
   return new Intl.NumberFormat("en-IN", {
@@ -50,6 +102,42 @@ function formatCourseFee(value) {
     currency: "INR",
     maximumFractionDigits: 0,
   }).format(Number(value || 0));
+}
+
+function normalizeAdvisorText(value = "") {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9+#.\s-]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function getAiCourseSuggestion(form, courses = []) {
+  const profileText = normalizeAdvisorText(`${form.education} ${form.skills} ${form.job}`);
+  if (!profileText) return null;
+
+  const scoredCourses = courses.map((course) => {
+    const signal = courseAdvisorSignals[course.course_name] || {};
+    const keywords = signal.keywords || [];
+    const score = keywords.reduce((total, keyword) => (
+      profileText.includes(keyword) ? total + (keyword.includes(" ") ? 3 : 2) : total
+    ), 0);
+
+    return {
+      course,
+      signal,
+      score,
+    };
+  });
+
+  const fallbackScore = profileText.includes("job") || profileText.includes("working") ? 1 : 0;
+  const bestMatch = scoredCourses.sort((left, right) => right.score - left.score)[0];
+  const selected = bestMatch?.score || fallbackScore ? bestMatch : scoredCourses.find((item) => item.course.course_name === "Python Programming") || scoredCourses[0];
+
+  if (!selected) return null;
+
+  return {
+    course: selected.course,
+    reason: selected.signal.reason || "This course is a balanced fit for your current profile.",
+    nextStep: selected.signal.nextStep || "Start here if you want a practical path into career-ready skills.",
+    confidence: selected.score >= 6 ? "Strong match" : selected.score >= 3 ? "Good match" : "Starter recommendation",
+  };
 }
 
 function CertisuredGrowthIllustration() {
@@ -227,14 +315,17 @@ function PartnerLogo({ partnerKey, label }) {
 
 export default function LandingPageSimple() {
   const navigate = useNavigate();
-  const [slideIndex, setSlideIndex] = useState(0);
   const [visibleWords, setVisibleWords] = useState(1);
   const [headingFading, setHeadingFading] = useState(false);
   const [subtitleVisible, setSubtitleVisible] = useState(false);
   const [ctaVisible, setCtaVisible] = useState(false);
+  const [activeHeroSlide, setActiveHeroSlide] = useState(0);
   const [flippedCourses, setFlippedCourses] = useState({});
   const [showAdminAlert, setShowAdminAlert] = useState(false);
   const [publicCourses, setPublicCourses] = useState([]);
+  const [advisorForm, setAdvisorForm] = useState(courseAdvisorInitialForm);
+  const [courseSuggestion, setCourseSuggestion] = useState(null);
+  const [advisorThinking, setAdvisorThinking] = useState(false);
   const courses = useMemo(
     () => (publicCourses.length ? publicCourses.map(decorateCourseRecord) : publicCourseCatalog),
     [publicCourses],
@@ -262,13 +353,6 @@ export default function LandingPageSimple() {
     return () => {
       mounted = false;
     };
-  }, []);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      setSlideIndex((current) => (current + 1) % slides.length);
-    }, 3500);
-    return () => window.clearInterval(timer);
   }, []);
 
   useEffect(() => {
@@ -309,11 +393,33 @@ export default function LandingPageSimple() {
     };
   }, []);
 
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setActiveHeroSlide((current) => (current + 1) % heroSlides.length);
+    }, 2600);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
+
   const toggleCourseCard = (courseKey) => {
     setFlippedCourses((prev) => ({
       ...prev,
       [courseKey]: !prev[courseKey],
     }));
+  };
+
+  const updateAdvisorForm = (key, value) => {
+    setAdvisorForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const handleCourseSuggestion = (event) => {
+    event.preventDefault();
+    setAdvisorThinking(true);
+    setCourseSuggestion(null);
+    window.setTimeout(() => {
+      setCourseSuggestion(getAiCourseSuggestion(advisorForm, courses));
+      setAdvisorThinking(false);
+    }, 900);
   };
 
   return (
@@ -351,12 +457,12 @@ export default function LandingPageSimple() {
       </header>
 
       <main id="top" className="mx-auto max-w-7xl px-4 py-10 md:px-8 lg:px-12 lg:py-16">
-        <section className="grid gap-10 lg:grid-cols-[0.92fr_1.08fr] lg:items-center">
-          <div className="fade-in-up">
+        <section className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(420px,540px)] lg:items-center">
+          <div className="fade-in-up max-w-4xl">
             <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-brand-500/72">ENROLLEASE  AI</p>
             <h1
-              aria-label="Transforming Student Admissions Into Intelligent Decisions"
-              className={`hero-heading-live mt-4 min-h-[5.9em] max-w-3xl font-display text-5xl font-semibold leading-[0.98] tracking-[-0.06em] text-slate-950 md:text-6xl ${headingFading ? "is-fading" : ""}`}
+              aria-label="Smart Admissions For Students And Admins"
+              className={`hero-heading-live mt-4 min-h-[5.9em] max-w-3xl font-display text-5xl font-semibold leading-[0.98] tracking-[-0.06em] text-brand-900 md:text-6xl ${headingFading ? "is-fading" : ""}`}
             >
               {heroWords.map((word, index) => (
                 <span
@@ -369,7 +475,7 @@ export default function LandingPageSimple() {
             </h1>
             {subtitleVisible ? (
               <p className="fade-in-up mt-6 max-w-2xl text-base leading-8 text-slate-600 md:text-lg">
-                Built to streamline enquiries, admissions, documents, and fee management.
+                Students can enquire with ease, while admins manage leads, admissions, follow-ups, and payments in one place.
               </p>
             ) : null}
             {ctaVisible ? (
@@ -390,32 +496,20 @@ export default function LandingPageSimple() {
             ) : null}
           </div>
 
-          <div className="overflow-hidden rounded-[32px] border border-white/85 bg-white/84 p-4 shadow-[0_28px_70px_rgba(9,30,66,0.10)] backdrop-blur-xl md:p-5">
-            <div className="relative overflow-hidden rounded-[30px]">
+          <div className="relative flex items-center justify-center lg:justify-end">
+            <div className="relative h-[420px] w-full max-w-[880px] overflow-hidden rounded-[36px] border border-sky-100 bg-[linear-gradient(135deg,rgba(177,217,255,0.32),rgba(255,255,255,0.84),rgba(209,244,255,0.48))] shadow-[0_32px_80px_rgba(148,163,184,0.13)]">
               <div
-                className="flex transition-transform duration-1000 ease-out"
-                style={{ transform: `translateX(-${slideIndex * 100}%)` }}
+                className="flex h-full w-full transition-transform duration-700 ease-out"
+                style={{ transform: `translate3d(-${activeHeroSlide * 100}%, 0, 0)` }}
               >
-                {slides.map((slide) => (
-                  <div key={slide.title} className="relative min-w-full">
-                    <img src={slide.image} alt={slide.title} className="h-[460px] w-full object-cover object-center" />
-                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-brand-800/86 via-brand-500/22 to-transparent p-7">
-                      <p className="mt-3 font-display text-4xl font-semibold tracking-[-0.04em] text-white">
-                        {slide.title}
-                      </p>
-                    </div>
+                {heroSlides.map((slide, index) => (
+                  <div key={`${slide.alt}-${index}`} className="h-full w-full min-w-full shrink-0 overflow-hidden">
+                    <img
+                      src={slide.src}
+                      alt={slide.alt}
+                      className={`block h-full w-full object-cover ${slide.className || "object-center"}`}
+                    />
                   </div>
-                ))}
-              </div>
-              <div className="absolute bottom-5 right-5 flex gap-2">
-                {slides.map((slide, index) => (
-                  <button
-                    key={slide.title}
-                    type="button"
-                    aria-label={`Show slide ${index + 1}`}
-                    onClick={() => setSlideIndex(index)}
-                    className={`h-2.5 rounded-full transition ${slideIndex === index ? "w-9 bg-white shadow-[0_0_18px_rgba(255,255,255,0.35)]" : "w-2.5 bg-white/55"}`}
-                  />
                 ))}
               </div>
             </div>
@@ -448,15 +542,128 @@ export default function LandingPageSimple() {
             </h2>
           </div>
 
+          <section className="mt-8 overflow-hidden rounded-[30px] border border-cyan-100 bg-[linear-gradient(145deg,#f0fdfa_0%,#ffffff_48%,#eff6ff_100%)] p-5 shadow-[0_24px_56px_rgba(8,145,178,0.10)] md:p-7">
+            <div className="grid gap-7 lg:grid-cols-[0.9fr_1.1fr] lg:items-start">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-cyan-700">EnrollEase AI Advisor</p>
+                <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-center">
+                  <h3 className="font-display text-3xl font-semibold text-slate-950 md:text-4xl">
+                    Not sure which course to choose?
+                  </h3>
+                  <img
+                    src={COURSE_ADVISOR_IMAGE_URL}
+                    alt="Course advisor illustration"
+                    className="h-24 w-24 shrink-0 rounded-[24px] border border-white/90 bg-white object-cover shadow-[0_16px_34px_rgba(8,145,178,0.14)]"
+                    loading="lazy"
+                  />
+                </div>
+                <blockquote className="relative mt-5 overflow-hidden rounded-[26px] border border-amber-200 bg-[linear-gradient(135deg,#fff7ed_0%,#fff_46%,#ecfdf5_100%)] px-5 py-5 text-base font-semibold leading-8 text-slate-900 shadow-[0_18px_42px_rgba(245,158,11,0.12)]">
+                  <span className="pointer-events-none absolute inset-y-0 left-0 w-2 bg-[linear-gradient(180deg,#f59e0b,#10b981,#0891b2)]" aria-hidden="true" />
+                  <span className="relative block bg-[linear-gradient(90deg,#b45309_0%,#0f766e_46%,#0b3558_100%)] bg-clip-text text-transparent">
+                    {courseAdvisorQuote}
+                  </span>
+                </blockquote>
+              </div>
+
+              <form onSubmit={handleCourseSuggestion} className="rounded-[26px] border border-white/90 bg-white/88 p-4 shadow-[0_18px_42px_rgba(15,23,42,0.08)] md:p-5">
+                <div className="grid gap-3 md:grid-cols-3">
+                  <input
+                    value={advisorForm.education}
+                    onChange={(event) => updateAdvisorForm("education", event.target.value)}
+                    placeholder="Qualification"
+                    aria-label="Education qualification"
+                    className="border-cyan-100 bg-cyan-50/60"
+                  />
+                  <input
+                    value={advisorForm.skills}
+                    onChange={(event) => updateAdvisorForm("skills", event.target.value)}
+                    placeholder="Skills you know"
+                    aria-label="Skills"
+                    className="border-emerald-100 bg-emerald-50/60"
+                  />
+                  <input
+                    value={advisorForm.job}
+                    onChange={(event) => updateAdvisorForm("job", event.target.value)}
+                    placeholder="Job or goal"
+                    aria-label="Current job or career goal"
+                    className="border-sky-100 bg-sky-50/60"
+                  />
+                </div>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button type="submit" className="button-primary" disabled={advisorThinking}>
+                    {advisorThinking ? "Finding best fit..." : "Suggest my course"}
+                  </button>
+                  <button
+                    type="button"
+                    className="button-secondary"
+                    onClick={() => {
+                      setAdvisorForm(courseAdvisorInitialForm);
+                      setCourseSuggestion(null);
+                      setAdvisorThinking(false);
+                    }}
+                  >
+                    Clear
+                  </button>
+                </div>
+
+                {advisorThinking ? (
+                  <div className="mt-5 rounded-[24px] border border-cyan-100 bg-[linear-gradient(145deg,#ecfeff,#ffffff_58%,#fefce8)] p-5 shadow-[0_16px_34px_rgba(8,145,178,0.10)]">
+                    <div className="flex items-center gap-3">
+                      <span className="course-advisor-loader" aria-hidden="true" />
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-cyan-700">AI matching</p>
+                        <p className="mt-1 text-sm font-semibold text-slate-700">Checking your education, skills, and goal...</p>
+                      </div>
+                    </div>
+                    <div className="mt-4 h-2 overflow-hidden rounded-full bg-cyan-50">
+                      <div className="course-advisor-progress h-full rounded-full bg-[linear-gradient(90deg,#0891b2,#10b981,#f59e0b)]" />
+                    </div>
+                  </div>
+                ) : null}
+
+                {courseSuggestion && !advisorThinking ? (
+                  <div className="course-advisor-result mt-5 rounded-[24px] border border-emerald-100 bg-[linear-gradient(145deg,#ecfdf5,#ffffff_58%,#eff6ff)] p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-emerald-700">
+                          {courseSuggestion.confidence}
+                        </p>
+                        <h4 className="mt-2 font-display text-2xl font-semibold text-slate-950">
+                          {courseSuggestion.course.course_name}
+                        </h4>
+                      </div>
+                      <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-brand-500 shadow-[0_8px_18px_rgba(15,23,42,0.08)]">
+                        {formatCourseFee(courseSuggestion.course.fee)}
+                      </span>
+                    </div>
+                    <p className="mt-4 text-sm leading-7 text-slate-600">{courseSuggestion.reason}</p>
+                    <p className="mt-2 text-sm font-semibold leading-7 text-slate-800">{courseSuggestion.nextStep}</p>
+                    <Link to="/enquiry" className="mt-5 inline-flex items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#0891b2,#10b981)] px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(8,145,178,0.18)] transition duration-200 hover:-translate-y-0.5">
+                      Enquire for this course
+                    </Link>
+                  </div>
+                ) : null}
+              </form>
+            </div>
+          </section>
+
           <div className="mt-8 grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-            {courses.map((course) => {
+            {courses.map((course, index) => {
               const flipped = Boolean(flippedCourses[course.key]);
+              const theme = courseCardThemes[index % courseCardThemes.length];
               return (
                 <button
                   key={course.key}
                   type="button"
                   onClick={() => toggleCourseCard(course.key)}
                   className="course-flip-card"
+                  style={{
+                    "--course-start": theme.start,
+                    "--course-mid": theme.mid,
+                    "--course-end": theme.end,
+                    "--course-back-start": theme.backStart,
+                    "--course-back-end": theme.backEnd,
+                  }}
                 >
                   <span className={`course-flip-card-inner ${flipped ? "is-flipped" : ""}`}>
                     <span className="course-flip-face course-flip-front">
@@ -517,16 +724,16 @@ export default function LandingPageSimple() {
 
       {showAdminAlert ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-[28px] border border-white/85 bg-white p-6 shadow-[0_30px_80px_rgba(9,30,66,0.22)] md:p-7">
-            <p className="text-[11px] font-bold uppercase tracking-[0.26em] text-rose-500">Restricted Access</p>
-            <h2 className="mt-3 font-display text-3xl font-semibold tracking-[-0.05em] text-slate-950">
-              Admin login is for authorized staff only
+          <div className="w-full max-w-md rounded-[26px] border border-slate-200 bg-white p-6 shadow-[0_28px_70px_rgba(15,23,42,0.20)] md:p-7">
+            <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-brand-500">Admin Portal</p>
+            <h2 className="mt-3 font-display text-3xl font-semibold tracking-[-0.045em] text-slate-950">
+              Continue to admin login
             </h2>
             <p className="mt-4 text-sm leading-7 text-slate-600">
-              Students should not sign in here. This area is protected for administrators who manage enquiries, enrollments, student records, and payments.
+              This section is for authorized CERTISURED team members to manage enquiries, admissions, records, and payments.
             </p>
-            <div className="mt-6 rounded-[22px] border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-6 text-amber-900">
-              Security notice: only approved admin credentials can access the dashboard. Unauthorized users will not be able to continue.
+            <div className="mt-6 rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm leading-6 text-slate-600">
+              Students can continue from the enquiry and course sections on this page.
             </div>
             <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
               <button

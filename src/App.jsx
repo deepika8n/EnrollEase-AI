@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import ToastStack from "./components/ToastStack";
 import { useApp } from "./context/AppContext";
+import AdminWelcomePage from "./pages/AdminWelcomePage";
 import DashboardHoverPage from "./pages/DashboardHoverPage";
 import EnquiriesPage from "./pages/EnquiriesPage";
 import EnrollmentPageSimple from "./pages/EnrollmentPageSimple";
@@ -59,6 +60,7 @@ export default function App() {
         <Route path="/enquiry" element={<PublicEnquiryPage />} />
         <Route path="/admin-login" element={<LoginPageSimple />} />
         <Route path="/login" element={<Navigate to="/admin-login" replace />} />
+        <Route path="/admin-welcome" element={<ProtectedRoute><AdminWelcomePage /></ProtectedRoute>} />
         <Route path="/dashboard" element={<ProtectedRoute><DashboardHoverPage /></ProtectedRoute>} />
         <Route path="/ai-copilot" element={<ProtectedRoute><AiCopilotPage /></ProtectedRoute>} />
         <Route path="/enrollment" element={<ProtectedRoute><EnrollmentPageSimple /></ProtectedRoute>} />

@@ -8,6 +8,7 @@ import StatusBadge from "../components/StatusBadge";
 import StudentAvatar from "../components/StudentAvatar";
 import Timeline from "../components/Timeline";
 import { useApp } from "../context/AppContext";
+import { normalizeBatchName } from "../data/courseCatalog";
 import { openEnrollmentPdf } from "../services/pdfServiceFixed";
 import {
   getEnrollmentTimelineValidationErrors,
@@ -19,10 +20,13 @@ import { toIsoDate } from "../utils/dateMath";
 import {
   formatPaymentTypeDisplay,
   inferPaymentPlan,
+  normalizeDiscountType,
   normalizePaymentHistoryList,
+  resolveDiscountAmount,
   resolveAmountPaid,
   resolveLastPaymentDate,
   resolveNextDueDate,
+  resolvePayableFee,
   resolveRemainingAmount,
   toNumberOrNull,
 } from "../utils/paymentHelpers";
@@ -34,6 +38,19 @@ function DetailCard({ label, value }) {
     <div className="min-w-0 overflow-hidden rounded-[24px] border border-slate-200 bg-surface-50 p-4">
       <p className="surface-label">{label}</p>
       <p className="mt-2 min-w-0 text-base font-semibold leading-snug text-slate-900 [overflow-wrap:anywhere]">
+        {hasDisplayValue ? value : "N/A"}
+      </p>
+    </div>
+  );
+}
+
+function PaymentHistoryMetric({ label, value }) {
+  const hasDisplayValue = value !== null && value !== undefined && String(value).trim() !== "";
+
+  return (
+    <div className="min-w-0 rounded-[18px] border border-slate-200 bg-white px-4 py-3">
+      <p className="text-[11px] font-bold uppercase text-slate-500">{label}</p>
+      <p className="mt-1 min-w-0 text-base font-semibold leading-snug text-slate-900 [overflow-wrap:anywhere]">
         {hasDisplayValue ? value : "N/A"}
       </p>
     </div>
@@ -53,6 +70,23 @@ function formatCurrencyValue(value) {
   return value === null || value === undefined ? "N/A" : formatCurrency(value);
 }
 
+function deriveOriginalFeeFromPayable(payableFee, discountType = "", discountValue = 0) {
+  const payableValue = toNumberOrNull(payableFee);
+  const value = toNumberOrNull(discountValue);
+  const normalizedType = normalizeDiscountType(discountType);
+
+  if (payableValue === null || value === null || value <= 0 || !normalizedType) return null;
+
+  if (normalizedType === "Amount") {
+    return payableValue + value;
+  }
+
+  const percentage = Math.min(value, 100);
+  if (percentage <= 0 || percentage >= 100) return null;
+
+  return Math.round(payableValue / (1 - percentage / 100));
+}
+
 function stripSystemVerificationLines(value) {
   return String(value || "")
     .split(/\r?\n/)
@@ -69,11 +103,33 @@ function stripSystemVerificationLines(value) {
     .trim();
 }
 
+function normalizeNoteSegment(value = "") {
+  return String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function dedupeEnrollmentNoteSegments(value = "") {
+  const seenSegments = new Set();
+
+  return String(value || "")
+    .split("|")
+    .map((segment) => segment.trim())
+    .filter((segment) => {
+      if (!segment) return false;
+
+      const normalizedSegment = normalizeNoteSegment(segment);
+      if (seenSegments.has(normalizedSegment)) return false;
+
+      seenSegments.add(normalizedSegment);
+      return true;
+    })
+    .join(" | ");
+}
+
 function getVisibleEnrollmentNote(enrollmentRemarks, studentNotes) {
-  const cleanedEnrollmentRemarks = stripSystemVerificationLines(enrollmentRemarks);
+  const cleanedEnrollmentRemarks = dedupeEnrollmentNoteSegments(stripSystemVerificationLines(enrollmentRemarks));
   if (cleanedEnrollmentRemarks) return cleanedEnrollmentRemarks;
 
-  const cleanedStudentNotes = stripSystemVerificationLines(studentNotes);
+  const cleanedStudentNotes = dedupeEnrollmentNoteSegments(stripSystemVerificationLines(studentNotes));
   if (cleanedStudentNotes) return cleanedStudentNotes;
 
   return "No remarks added.";
@@ -87,7 +143,7 @@ function buildProfileForm(student = {}, enrollment = {}) {
     email: student?.email || "",
     current_activity: student?.current_activity || "",
     place: student?.place || "",
-    remarks: enrollment?.remarks || "",
+    remarks: dedupeEnrollmentNoteSegments(stripSystemVerificationLines(enrollment?.remarks || "")),
   };
 }
 
@@ -207,7 +263,44 @@ export default function StudentProfilePageFixed() {
   const normalized = useMemo(() => {
     if (!record || !student || !enrollment) return null;
 
-    const courseFee = toNumberOrNull(enrollment.total_fee) ?? toNumberOrNull(course?.fee);
+    const savedPayableFee = toNumberOrNull(enrollment.total_fee) ?? 0;
+    const catalogFee = toNumberOrNull(course?.fee);
+    const storedOriginalFee = toNumberOrNull(enrollment.original_fee);
+    const hasStoredDiscount = Boolean(enrollment.discount_type && toNumberOrNull(enrollment.discount_value));
+    const storedDiscountAmount = toNumberOrNull(enrollment.discount_amount);
+    const derivedOriginalFee = deriveOriginalFeeFromPayable(
+      savedPayableFee,
+      enrollment.discount_type,
+      enrollment.discount_value,
+    );
+    const catalogDiscountAmount = catalogFee && savedPayableFee && catalogFee > savedPayableFee
+      ? catalogFee - savedPayableFee
+      : 0;
+    const originalFee = (() => {
+      if (
+        hasStoredDiscount
+        && derivedOriginalFee !== null
+        && savedPayableFee
+        && (storedOriginalFee === null || storedOriginalFee <= savedPayableFee)
+      ) {
+        return derivedOriginalFee;
+      }
+      if (catalogDiscountAmount && (storedOriginalFee === null || storedOriginalFee <= savedPayableFee)) return catalogFee;
+      if (storedDiscountAmount && savedPayableFee && (storedOriginalFee === null || storedOriginalFee <= savedPayableFee)) {
+        return savedPayableFee + storedDiscountAmount;
+      }
+      if (storedOriginalFee !== null) return storedOriginalFee;
+      if (catalogFee !== null && (!savedPayableFee || catalogFee >= savedPayableFee)) return catalogFee;
+      if (hasStoredDiscount && derivedOriginalFee !== null) return derivedOriginalFee;
+      return savedPayableFee;
+    })();
+    const calculatedDiscountAmount = resolveDiscountAmount(
+      originalFee,
+      enrollment.discount_type,
+      enrollment.discount_value,
+    );
+    const discountAmount = calculatedDiscountAmount || storedDiscountAmount || catalogDiscountAmount;
+    const courseFee = savedPayableFee || resolvePayableFee(originalFee, enrollment.discount_type, enrollment.discount_value) || 0;
     const amountPaid = resolveAmountPaid(enrollment.amount_paid, enrollment.payment_history);
     const currentStage = record.currentStage;
     const paymentPlan = inferPaymentPlan({
@@ -241,12 +334,22 @@ export default function StudentProfilePageFixed() {
       history: paymentHistory,
     });
     const installmentsPaid = Number(enrollment.installments_paid) || latestPayment?.installments_paid || (paymentPlan === "EMI" ? paymentHistory.length : amountPaid > 0 ? 1 : 0);
+    const remainingInstallments = paymentPlan === "EMI"
+      ? Math.max(installmentsPlanned - installmentsPaid, 0)
+      : 0;
+    const installmentAmount = paymentPlan === "EMI"
+      ? (remainingInstallments > 0 ? Math.round((remainingAmount || 0) / remainingInstallments) : 0)
+      : 0;
 
     return {
       currentStage,
       courseFee,
+      originalFee,
+      discountAmount,
       amountPaid,
       remainingAmount,
+      installmentAmount,
+      remainingInstallments,
       paymentHistory,
       student: {
         ...student,
@@ -260,9 +363,14 @@ export default function StudentProfilePageFixed() {
         payment_plan: paymentPlan,
         payment_method: paymentMethod,
         total_fee: courseFee,
+        original_fee: originalFee,
+        discount_type: enrollment.discount_type || "",
+        discount_value: enrollment.discount_value || 0,
+        discount_amount: discountAmount,
         amount_paid: amountPaid,
         installments_planned: installmentsPlanned,
         installments_paid: installmentsPaid,
+        installment_amount: installmentAmount,
         next_due_date: nextDueDate,
         last_payment_date: lastPaymentDate,
         payment_history: paymentHistory,
@@ -335,7 +443,7 @@ export default function StudentProfilePageFixed() {
       <PageHeader
         eyebrow="Student profile"
         title={student.full_name}
-        description="A complete branded view of personal details, payment progress, documents, and verification history."
+        description="A complete branded view of personal details, payment progress, and student history."
         actions={[
           <button
             key="edit"
@@ -496,36 +604,17 @@ export default function StudentProfilePageFixed() {
       <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
         <div className="space-y-6">
           <section className="panel overflow-hidden p-0">
-            <div className="bg-[linear-gradient(135deg,#061f37_0%,#0b3558_55%,#1a5a82_100%)] p-6 md:p-8">
-              <div className="grid gap-6 lg:grid-cols-[auto_1fr_auto] lg:items-center">
+            <div className="bg-[linear-gradient(135deg,#061f37_0%,#0b3558_55%,#1a5a82_100%)] p-5 md:p-6">
+              <div className="grid gap-4 sm:grid-cols-[auto_1fr] sm:items-center">
                 <StudentAvatar
                   src={studentPhotoUrl}
                   name={student.full_name}
-                  className="h-28 w-28 rounded-[28px] object-cover shadow-[0_22px_48px_rgba(4,23,40,0.28)]"
-                  fallbackClassName="h-28 w-28 rounded-[28px] shadow-[0_22px_48px_rgba(4,23,40,0.18)]"
-                  textClassName="text-2xl"
+                  className="h-20 w-20 rounded-[22px] object-cover shadow-[0_16px_34px_rgba(4,23,40,0.25)] md:h-24 md:w-24"
+                  fallbackClassName="h-20 w-20 rounded-[22px] shadow-[0_16px_34px_rgba(4,23,40,0.18)] md:h-24 md:w-24"
+                  textClassName="text-xl"
                 />
-                <div>
-                  <p className="mt-5 text-sm uppercase tracking-[0.24em] text-white/55">{student.place}</p>
-                  <p className="mt-2 font-display text-4xl font-semibold tracking-[-0.04em] text-white">{student.full_name}</p>
-                  <p className="mt-2 text-sm uppercase tracking-[0.22em] text-white/60">{student.student_code || "Custom ID not set"}</p>
-                  <p className="mt-2 text-sm leading-7 text-white/72">
-                    {course?.course_name || "Course pending"} | {enrollment.batch || "Batch pending"} | {student.email || "Email pending"}
-                  </p>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-                  <div className="rounded-[22px] border border-white/10 bg-white/8 px-4 py-3 text-white">
-                    <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-white/55">Amount paid</p>
-                    <p className="mt-2 text-xl font-semibold">
-                      {isPreEnrollment ? "Not started" : formatCurrencyValue(normalized.amountPaid)}
-                    </p>
-                  </div>
-                  <div className="rounded-[22px] border border-white/10 bg-white/8 px-4 py-3 text-white">
-                    <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-white/55">Remaining</p>
-                    <p className="mt-2 text-xl font-semibold">
-                      {isPreEnrollment ? "N/A" : formatCurrencyValue(normalized.remainingAmount)}
-                    </p>
-                  </div>
+                <div className="min-w-0 self-center">
+                  <p className="font-display text-2xl font-semibold leading-tight text-white md:text-3xl">{student.full_name}</p>
                 </div>
               </div>
             </div>
@@ -695,15 +784,27 @@ export default function StudentProfilePageFixed() {
               </div>
             ) : (
               <div className="mt-6 grid gap-4 md:grid-cols-2">
-                <DetailCard label="Course fee" value={formatCurrencyValue(normalized.courseFee)} />
+                {normalized.discountAmount > 0 ? (
+                  <>
+                    <DetailCard label="Original fee" value={formatCurrencyValue(normalized.originalFee)} />
+                    <DetailCard label="Discount" value={formatCurrencyValue(normalized.discountAmount)} />
+                  </>
+                ) : null}
+                <DetailCard label={normalized.discountAmount > 0 ? "Final payable fee" : "Course fee"} value={formatCurrencyValue(normalized.courseFee)} />
                 <DetailCard label="Amount paid" value={formatCurrencyValue(normalized.amountPaid)} />
                 <DetailCard label="Remaining amount" value={formatCurrencyValue(normalized.remainingAmount)} />
                 <DetailCard label="Payment type" value={formatPaymentTypeDisplay(normalized.enrollment.payment_plan)} />
                 <DetailCard label="Payment method" value={normalized.enrollment.payment_method} />
                 <DetailCard
-                  label="Installments"
+                  label="Installments paid"
                   value={normalized.enrollment.payment_plan === "EMI" ? `${normalized.enrollment.installments_paid || 0}/${normalized.enrollment.installments_planned || 0}` : (normalized.enrollment.payment_plan ? "One time payment" : "N/A")}
                 />
+                {normalized.enrollment.payment_plan === "EMI" ? (
+                  <>
+                    <DetailCard label="Remaining installments" value={String(normalized.remainingInstallments)} />
+                    <DetailCard label="Installment amount" value={formatCurrencyValue(normalized.installmentAmount)} />
+                  </>
+                ) : null}
                 <DetailCard label="Next due date" value={formatDate(normalized.enrollment.next_due_date)} />
                 <DetailCard label="Last payment" value={formatDate(normalized.enrollment.last_payment_date)} />
               </div>
@@ -825,12 +926,12 @@ export default function StudentProfilePageFixed() {
                     </div>
                     <StatusBadge value={payment.status} />
                   </div>
-                  <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-                    <DetailCard label="Course fee" value={formatCurrencyValue(payment.course_fee)} />
-                    <DetailCard label="Paid" value={formatCurrencyValue(payment.paid_amount ?? payment.amount)} />
-                    <DetailCard label="Pay type" value={payment.payment_type || formatPaymentTypeDisplay(normalized.enrollment.payment_plan)} />
-                    <DetailCard label="Pay through" value={payment.payment_method || payment.mode} />
-                    <DetailCard label="Pending" value={formatCurrencyValue(payment.pending_amount)} />
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+                    <PaymentHistoryMetric label="Course fee" value={formatCurrencyValue(payment.course_fee)} />
+                    <PaymentHistoryMetric label="Paid" value={formatCurrencyValue(payment.paid_amount ?? payment.amount)} />
+                    <PaymentHistoryMetric label="Pay type" value={payment.payment_type || formatPaymentTypeDisplay(normalized.enrollment.payment_plan)} />
+                    <PaymentHistoryMetric label="Pay through" value={payment.payment_method || payment.mode} />
+                    <PaymentHistoryMetric label="Pending" value={formatCurrencyValue(payment.pending_amount)} />
                   </div>
                 </div>
               )) : (

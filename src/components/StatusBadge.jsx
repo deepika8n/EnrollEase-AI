@@ -11,7 +11,6 @@ const styles = {
   Review: "border-brand-200 bg-brand-50 text-brand-500",
   Rejected: "border-brand-500 bg-brand-500 text-white",
   "Missing Documents": "border-gold-200 bg-gold-50 text-[#8A6610]",
-  "Requested Correction": "border-gold-200 bg-gold-50 text-[#8A6610]",
   Completed: "border-brand-200 bg-brand-50 text-brand-600",
   Active: "border-accent-100 bg-accent-50 text-accent-700",
   "Follow-up": "border-brand-200 bg-brand-50 text-brand-600",

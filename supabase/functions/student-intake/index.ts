@@ -1,6 +1,71 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { getAdminNotificationEmail, sendEmail } from "../_shared/email.ts";
 
+declare const Deno: {
+  env: {
+    get(name: string): string | undefined;
+  };
+  serve(handler: (request: Request) => Response | Promise<Response>): void;
+
+};
+
+type SubmissionDocument = {
+  document_type?: string | null;
+  file_url?: string | null;
+  remarks?: string | null;
+  [key: string]: unknown;
+};
+
+type EnrollmentStatusRow = {
+  student_id?: string | null;
+  pipeline_stage?: string | null;
+};
+
+type StudentCodeRow = {
+  id?: string | null;
+  student_code?: string | null;
+};
+
+type StudentRecord = {
+  student_code?: string | null;
+  [key: string]: unknown;
+};
+
+type CourseRecord = {
+  course_name?: string | null;
+  [key: string]: unknown;
+};
+
+type EnrollmentWithRelations = {
+  id: string;
+  student_id?: string | null;
+  lead_date?: string | null;
+  enrolled_date?: string | null;
+  batch?: string | null;
+  payment_plan?: string | null;
+  payment_method?: string | null;
+  original_fee?: number | string | null;
+  discount_type?: string | null;
+  discount_value?: number | string | null;
+  discount_amount?: number | string | null;
+  total_fee?: number | string | null;
+  amount_paid?: number | string | null;
+  installments_planned?: number | string | null;
+  installment_amount?: number | string | null;
+  last_payment_date?: string | null;
+  next_due_date?: string | null;
+  remarks?: string | null;
+  course_name?: string | null;
+  student_form_status?: string | null;
+  student_form_expires_at?: string | null;
+  student_form_token_hash?: string | null;
+  students?: StudentRecord | null;
+  courses?: CourseRecord | null;
+  [key: string]: unknown;
+};
+
+type SupabaseClientAny = any;
+
 const JSON_HEADERS = {
   "Content-Type": "application/json",
   "Access-Control-Allow-Origin": "*",
@@ -15,12 +80,34 @@ function response(status: number, body: Record<string, unknown>) {
   });
 }
 
-function normalizeEmail(value = "") {
+function normalizeEmail(value: unknown = "") {
   return String(value || "").trim().toLowerCase();
 }
 
-function normalizeToken(value = "") {
+function normalizeToken(value: unknown = "") {
   return String(value || "").trim();
+}
+
+function normalizeNoteSegment(value: unknown = "") {
+  return String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function mergeUniqueNoteSegments(segments: Array<string | null | undefined>) {
+  const seenSegments = new Set<string>();
+
+  return segments
+    .flatMap((segment) => String(segment || "").split("|"))
+    .map((segment) => segment.trim())
+    .filter((segment) => {
+      if (!segment) return false;
+
+      const normalizedSegment = normalizeNoteSegment(segment);
+      if (seenSegments.has(normalizedSegment)) return false;
+
+      seenSegments.add(normalizedSegment);
+      return true;
+    })
+    .join(" | ");
 }
 
 function toIsoDate(value: string | Date | null | undefined) {
@@ -44,6 +131,21 @@ async function sha256(value = "") {
 
 function sanitizeString(value: unknown) {
   return String(value || "").trim();
+}
+
+function pickStudentDbColumns(student: Record<string, unknown>) {
+  return {
+    student_code: sanitizeString(student.student_code),
+    full_name: sanitizeString(student.full_name),
+    email: normalizeEmail(student.email),
+    phone: sanitizeString(student.phone),
+    current_activity: sanitizeString(student.current_activity),
+    place: sanitizeString(student.place),
+    photo_url: sanitizeString(student.photo_url),
+    aadhaar_document_url: sanitizeString(student.aadhaar_document_url),
+    lead_source: sanitizeString(student.lead_source),
+    notes: sanitizeString(student.notes),
+  };
 }
 
 function getMissingSchemaColumn(error: { message?: string } | null | undefined, tableName = "") {
@@ -85,7 +187,7 @@ async function updateTableWithSchemaRetry<T extends Record<string, unknown>>({
   recordId,
   payload,
 }: {
-  adminClient: ReturnType<typeof createClient>;
+  adminClient: SupabaseClientAny;
   tableName: string;
   recordId: string;
   payload: T;
@@ -95,7 +197,7 @@ async function updateTableWithSchemaRetry<T extends Record<string, unknown>>({
   while (true) {
     const { error } = await adminClient
       .from(tableName)
-      .update(nextPayload)
+      .update(nextPayload as unknown)
       .eq("id", recordId);
 
     if (!error) {
@@ -134,6 +236,45 @@ function normalizePaymentStatus(totalFee: number, amountPaid: number) {
   if (totalFee <= 0 || amountPaid <= 0) return "Pending";
   if (amountPaid >= totalFee) return "Paid";
   return "Partial";
+}
+
+function formatCurrencyValue(value: unknown) {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(toNumber(value, 0));
+}
+
+function formatDateLabel(value: string | null | undefined) {
+  const iso = toIsoDate(value);
+  if (!iso) return "N/A";
+  return new Intl.DateTimeFormat("en-IN", { dateStyle: "medium" }).format(new Date(`${iso}T00:00:00`));
+}
+
+function normalizeDiscountType(value: unknown = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized.includes("percent") || normalized.includes("%")) return "Percentage";
+  if (normalized.includes("amount") || normalized.includes("flat")) return "Amount";
+  return "";
+}
+
+function resolveDiscountAmount(originalFee: number, discountType: unknown = "", discountValue: unknown = 0) {
+  const feeValue = Math.max(toNumber(originalFee, 0), 0);
+  const value = Math.max(toNumber(discountValue, 0), 0);
+  const normalizedType = normalizeDiscountType(discountType);
+
+  if (!feeValue || !value || !normalizedType) return 0;
+  if (normalizedType === "Percentage") {
+    return Math.min(Math.round((feeValue * Math.min(value, 100)) / 100), feeValue);
+  }
+
+  return Math.min(value, feeValue);
+}
+
+function resolvePayableFee(originalFee: number, discountType: unknown = "", discountValue: unknown = 0) {
+  const feeValue = Math.max(toNumber(originalFee, 0), 0);
+  return Math.max(feeValue - resolveDiscountAmount(feeValue, discountType, discountValue), 0);
 }
 
 function buildPaymentHistory({
@@ -235,6 +376,59 @@ Please review the student profile and documents in EnrollEase.`,
   };
 }
 
+function buildPaymentStatusEmail({
+  studentName = "",
+  courseName = "",
+  amountPaid = 0,
+  paymentDate = "",
+  remainingAmount = 0,
+  nextDueDate = "",
+  isCleared = false,
+}) {
+  const subject = isCleared ? "Payment Cleared - CERTISURED" : "Payment Received - CERTISURED";
+  const statusLabel = isCleared ? "Cleared" : "Payment Received";
+  const pendingHtml = isCleared
+    ? "<p>Your payment plan is marked as <strong>Cleared</strong>.</p>"
+    : `<p><strong>Remaining amount:</strong> ${escapeHtml(formatCurrencyValue(remainingAmount))}<br /><strong>Next due date:</strong> ${escapeHtml(formatDateLabel(nextDueDate))}</p>`;
+  const pendingText = isCleared
+    ? "Your payment plan is marked as Cleared."
+    : `Remaining amount: ${formatCurrencyValue(remainingAmount)}
+Next due date: ${formatDateLabel(nextDueDate)}`;
+
+  return {
+    subject,
+    html: `
+      <div style="margin:0;padding:24px;background:#eef4fb;font-family:Arial,sans-serif;color:#10233c;">
+        <div style="max-width:680px;margin:0 auto;background:#ffffff;border:1px solid #dbe8f7;border-radius:24px;overflow:hidden;">
+          <div style="padding:28px 32px;background:#0b3558;color:#ffffff;">
+            <div style="font-size:12px;letter-spacing:0.26em;text-transform:uppercase;font-weight:700;opacity:0.78;">CERTISURED</div>
+            <div style="margin-top:8px;font-size:28px;font-weight:800;">Payment Update</div>
+            <div style="margin-top:4px;font-size:12px;letter-spacing:0.22em;text-transform:uppercase;font-weight:700;opacity:0.78;">${escapeHtml(statusLabel)}</div>
+          </div>
+          <div style="padding:32px;">
+            <p>Dear ${escapeHtml(studentName || "Student")},</p>
+            <p>Thank you for your payment towards <strong>${escapeHtml(courseName || "your course")}</strong>.</p>
+            <p><strong>Paid amount:</strong> ${escapeHtml(formatCurrencyValue(amountPaid))}<br /><strong>Paid date:</strong> ${escapeHtml(formatDateLabel(paymentDate))}</p>
+            ${pendingHtml}
+            <p style="margin-top:28px;">Thanks and Regards,<br /><strong>CERTISURED</strong></p>
+          </div>
+        </div>
+      </div>
+    `,
+    text: `Dear ${studentName || "Student"},
+
+Thank you for your payment towards ${courseName || "your course"}.
+
+Paid amount: ${formatCurrencyValue(amountPaid)}
+Paid date: ${formatDateLabel(paymentDate)}
+Status: ${statusLabel}
+${pendingText}
+
+Thanks and Regards,
+CERTISURED`,
+  };
+}
+
 function parseStudentCode(value = "") {
   const match = String(value || "").trim().toUpperCase().match(/^(.*?)(\d+)$/);
   if (!match) return null;
@@ -271,7 +465,7 @@ function getNextStudentCode(existingCodes: string[] = [], fallbackPrefix = "CT")
   return `${latest.prefix}${String(latest.numericValue + 1).padStart(latest.numericPart.length, "0")}`;
 }
 
-async function validateRequest(adminClient: ReturnType<typeof createClient>, enrollmentId = "", token = "") {
+async function validateRequest(adminClient: SupabaseClientAny, enrollmentId = "", token = "") {
   const { data, error } = await adminClient
     .from("enrollments")
     .select("*, students!inner(*), courses(*)")
@@ -344,9 +538,9 @@ Deno.serve(async (request) => {
     if (action === "submit_request") {
       const enrollment = await validateRequest(adminClient, enrollmentId, token);
       const submission = body?.submission && typeof body.submission === "object" ? body.submission : {};
-      const studentPatch = submission.student && typeof submission.student === "object" ? submission.student : {};
-      const enrollmentPatch = submission.enrollment && typeof submission.enrollment === "object" ? submission.enrollment : {};
-      const documents = Array.isArray(submission.documents) ? submission.documents : [];
+      const studentPatch = submission.student && typeof submission.student === "object" ? submission.student as Record<string, unknown> : {};
+      const enrollmentPatch = submission.enrollment && typeof submission.enrollment === "object" ? submission.enrollment as Record<string, unknown> : {};
+      const documents = Array.isArray(submission.documents) ? submission.documents as SubmissionDocument[] : [];
 
       const fullName = sanitizeString(studentPatch.full_name);
       const email = normalizeEmail(studentPatch.email);
@@ -355,8 +549,8 @@ Deno.serve(async (request) => {
         return response(400, { error: "Full name, email, and phone are required." });
       }
 
-      const studentPhoto = documents.find((item) => item?.document_type === "Student Photo");
-      const aadhaarDocument = documents.find((item) => item?.document_type === "Aadhaar ID Photo");
+      const studentPhoto = documents.find((item: SubmissionDocument) => item?.document_type === "Student Photo");
+      const aadhaarDocument = documents.find((item: SubmissionDocument) => item?.document_type === "Aadhaar ID Photo");
       if (!studentPhoto?.file_url || !aadhaarDocument?.file_url) {
         return response(400, { error: "Student photo and Aadhaar upload are required." });
       }
@@ -366,7 +560,11 @@ Deno.serve(async (request) => {
       const batch = sanitizeString(enrollmentPatch.batch || enrollment.batch);
       const paymentPlan = sanitizeString(enrollmentPatch.payment_plan || enrollment.payment_plan || "One Time");
       const paymentMethod = sanitizeString(enrollmentPatch.payment_method || enrollment.payment_method || "UPI");
-      const totalFee = toNumber(enrollmentPatch.total_fee ?? enrollment.total_fee, 0);
+      const originalFee = toNumber(enrollmentPatch.original_fee ?? enrollment.original_fee ?? enrollmentPatch.total_fee ?? enrollment.total_fee, 0);
+      const discountType = normalizeDiscountType(enrollmentPatch.discount_type ?? enrollment.discount_type);
+      const discountValue = toNumber(enrollmentPatch.discount_value ?? enrollment.discount_value, 0);
+      const discountAmount = resolveDiscountAmount(originalFee, discountType, discountValue);
+      const totalFee = resolvePayableFee(originalFee, discountType, discountValue);
       const amountPaid = toNumber(enrollmentPatch.amount_paid ?? enrollment.amount_paid, 0);
       const installmentsPlanned = paymentPlan === "EMI"
         ? Math.max(toNumber(enrollmentPatch.installments_planned ?? enrollment.installments_planned, 3), 1)
@@ -429,24 +627,20 @@ Deno.serve(async (request) => {
         .filter((item) => enrolledStudentIds.has(item.id))
         .map((item) => String(item.student_code || "").trim())
         .filter(Boolean);
-      const nextStudentCode = String(enrollment.students?.student_code || "").trim() || getNextStudentCode(existingCodes);
+      const nextStudentCode = String((enrollment.students as StudentRecord | null)?.student_code || "").trim() || getNextStudentCode(existingCodes);
 
-      const nextStudentPayload = {
+      const nextStudentPayload = pickStudentDbColumns({
+        student_code: nextStudentCode,
         full_name: fullName,
         email,
         phone,
-        alternate_phone: sanitizeString(studentPatch.alternate_phone),
-        college_name: sanitizeString(studentPatch.college_name),
         current_activity: sanitizeString(studentPatch.current_activity),
         place: sanitizeString(studentPatch.place),
-        address: sanitizeString(studentPatch.address),
-        guardian_name: sanitizeString(studentPatch.guardian_name),
-        guardian_relation: sanitizeString(studentPatch.guardian_relation),
-        guardian_phone: sanitizeString(studentPatch.guardian_phone),
         photo_url: String(studentPhoto.file_url || ""),
         aadhaar_document_url: String(aadhaarDocument.file_url || ""),
-        student_code: nextStudentCode,
-      };
+        lead_source: sanitizeString((enrollment.students as StudentRecord | null)?.lead_source || ""),
+        notes: sanitizeString((enrollment.students as StudentRecord | null)?.notes || ""),
+      });
 
       const { error: studentUpdateError } = await updateTableWithSchemaRetry({
         adminClient,
@@ -460,9 +654,11 @@ Deno.serve(async (request) => {
 
       const currentRemarks = sanitizeString(enrollment.remarks);
       const submittedRemarks = sanitizeString(enrollmentPatch.remarks);
-      const mergedRemarks = [currentRemarks, submittedRemarks, `Student form submitted on ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`]
-        .filter(Boolean)
-        .join(" | ");
+      const mergedRemarks = mergeUniqueNoteSegments([
+        currentRemarks,
+        submittedRemarks,
+        `Student form submitted on ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`,
+      ]);
       const nextEnrollmentPayload = {
         pipeline_stage: "Enrolled",
         course_name: sanitizeString(enrollmentPatch.course_name || enrollment.course_name || enrollment.courses?.course_name || ""),
@@ -471,6 +667,10 @@ Deno.serve(async (request) => {
         enrolled_date: enrolledDate,
         payment_method: paymentMethod,
         payment_plan: paymentPlan,
+        original_fee: originalFee,
+        discount_type: discountType,
+        discount_value: discountValue,
+        discount_amount: discountAmount,
         total_fee: totalFee,
         amount_paid: amountPaid,
         installments_planned: installmentsPlanned,
@@ -502,7 +702,7 @@ Deno.serve(async (request) => {
         return response(500, { error: enrollmentUpdateError.message || "Unable to update the enrollment record." });
       }
 
-      const documentPayload = documents.map((item) => ({
+      const documentPayload = documents.map((item: SubmissionDocument) => ({
         enrollment_id: enrollmentId,
         document_type: sanitizeString(item.document_type),
         file_url: String(item.file_url || ""),
@@ -519,6 +719,18 @@ Deno.serve(async (request) => {
       const courseName = String(enrollment.courses?.course_name || enrollment.course_name || "").trim();
       const studentAck = buildStudentSubmissionAckEmail(fullName, courseName);
       const adminAlert = buildAdminSubmissionEmail(fullName, email, courseName);
+      const remainingAmount = Math.max(totalFee - amountPaid, 0);
+      const paymentEmail = amountPaid > 0
+        ? buildPaymentStatusEmail({
+          studentName: fullName,
+          courseName,
+          amountPaid,
+          paymentDate: lastPaymentDate || enrolledDate || leadDate,
+          remainingAmount,
+          nextDueDate,
+          isCleared: paymentStatus === "Paid" || remainingAmount <= 0,
+        })
+        : null;
 
       await sendEmail({
         to: email,
@@ -536,6 +748,16 @@ Deno.serve(async (request) => {
         replyTo: email,
       });
 
+      if (paymentEmail) {
+        await sendEmail({
+          to: email,
+          subject: paymentEmail.subject,
+          html: paymentEmail.html,
+          text: paymentEmail.text,
+          replyTo: getAdminNotificationEmail(),
+        });
+      }
+
       await adminClient.from("email_logs").insert([
         {
           enrollment_id: enrollmentId,
@@ -549,7 +771,15 @@ Deno.serve(async (request) => {
           status: "Sent",
           sent_at: new Date().toISOString(),
         },
-      ]);
+        paymentEmail
+          ? {
+            enrollment_id: enrollmentId,
+            email_type: "Payment Update",
+            status: "Sent",
+            sent_at: new Date().toISOString(),
+          }
+          : null,
+      ].filter(Boolean));
 
       return response(200, { ok: true });
     }

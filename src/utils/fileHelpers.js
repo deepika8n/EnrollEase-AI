@@ -12,7 +12,7 @@ export function fileToDataUrl(file) {
   });
 }
 
-export const imageFileAccept = ".png,.jpg,.jpeg,image/png,image/jpeg";
+export const imageFileAccept = ".png,.jpg,.jpeg,.pdf,image/png,image/jpeg,application/pdf";
 export const aadhaarFileAccept = ".png,.jpg,.jpeg,.pdf,image/png,image/jpeg,application/pdf";
 
 function dataUrlToUint8Array(source) {

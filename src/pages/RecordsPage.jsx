@@ -5,6 +5,7 @@ import DataTable from "../components/DataTable";
 import PageHeader from "../components/PageHeader";
 import StatusBadge from "../components/StatusBadge";
 import { useApp } from "../context/AppContext";
+import { normalizeBatchName } from "../data/courseCatalog";
 import { formatCurrency, formatDate } from "../utils/formatters";
 import {
   inferPaymentPlan,
@@ -12,6 +13,7 @@ import {
   resolveRemainingAmount,
   toNumberOrNull,
 } from "../utils/paymentHelpers";
+import { compareStudentCodes } from "../utils/studentCode";
 
 function getPaymentPlan(record) {
   return inferPaymentPlan({
@@ -26,10 +28,13 @@ function getCourseFee(record) {
   return toNumberOrNull(record.enrollment.total_fee) ?? toNumberOrNull(record.course?.fee);
 }
 
-function getEnrollmentSortTime(record) {
-  const primaryDate = record.enrollment.enrolled_date || record.enrollment.created_at || record.enrollment.lead_date;
-  const parsedTime = Date.parse(primaryDate || "");
-  return Number.isNaN(parsedTime) ? 0 : parsedTime;
+function compareRecordsByStudentId(left, right) {
+  const leftCode = left.student.student_code || "";
+  const rightCode = right.student.student_code || "";
+  const codeComparison = compareStudentCodes(leftCode, rightCode);
+  if (codeComparison !== 0) return codeComparison;
+
+  return String(left.student.full_name || "").localeCompare(String(right.student.full_name || ""));
 }
 
 export default function RecordsPage() {
@@ -47,7 +52,7 @@ export default function RecordsPage() {
     () =>
       portalRecords
         .filter((record) => record.isEnrolledRecord)
-        .sort((left, right) => getEnrollmentSortTime(right) - getEnrollmentSortTime(left)),
+        .sort(compareRecordsByStudentId),
     [portalRecords],
   );
 
@@ -62,12 +67,12 @@ export default function RecordsPage() {
           || (record.student.email || "").toLowerCase().includes(query)
           || record.student.phone.toLowerCase().includes(query)
           || (record.course?.course_name || "").toLowerCase().includes(query)
-          || (record.enrollment.batch || "").toLowerCase().includes(query);
+          || (normalizeBatchName(record.enrollment.batch) || "").toLowerCase().includes(query);
 
         return (
           matchesQuery
           && (!filters.course || record.course?.course_name === filters.course)
-          && (!filters.batch || (record.enrollment.batch || "N/A") === filters.batch)
+          && (!filters.batch || (normalizeBatchName(record.enrollment.batch) || "N/A") === filters.batch)
           && (!filters.plan || getPaymentPlan(record) === filters.plan)
           && (!filters.payment || (record.enrollment.payment_status || "Pending") === filters.payment)
         );
@@ -86,7 +91,7 @@ export default function RecordsPage() {
           student_email: record.student.email || "N/A",
           enrollment_date: formatDate(record.enrollment.enrolled_date || record.enrollment.lead_date),
           course: record.course?.course_name || "N/A",
-          batch: record.enrollment.batch || "N/A",
+          batch: normalizeBatchName(record.enrollment.batch) || "N/A",
           phone: record.student.phone || "N/A",
           course_fee: courseFee === null ? "N/A" : formatCurrency(courseFee),
           payment_plan: getPaymentPlan(record),
@@ -102,7 +107,7 @@ export default function RecordsPage() {
   );
 
   const batchOptions = useMemo(
-    () => [...new Set(enrolledRecords.map((record) => record.enrollment.batch || "N/A"))],
+    () => [...new Set(enrolledRecords.map((record) => normalizeBatchName(record.enrollment.batch) || "N/A"))],
     [enrolledRecords],
   );
 

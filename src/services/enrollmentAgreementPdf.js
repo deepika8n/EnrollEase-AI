@@ -3,8 +3,11 @@ import { addMonthsPreservingDay, toIsoDate } from "../utils/dateMath.js";
 import shieldIcon from "../assets/certisured-shield.svg";
 import {
   inferPaymentPlan,
+  normalizeDiscountType,
   normalizePaymentHistoryList,
+  resolveDiscountAmount,
   resolveAmountPaid,
+  resolvePayableFee,
   toNumberOrNull,
 } from "../utils/paymentHelpers.js";
 
@@ -23,6 +26,8 @@ const DEFAULT_COMPANY = {
   phone: "9606698866",
   email: "hello@certisured.com",
 };
+const PAGE_TOP_Y = 18;
+const PAGE_BOTTOM_Y = 282;
 
 function hasValue(value) {
   return value !== null && value !== undefined && String(value).trim() !== "";
@@ -108,6 +113,29 @@ function formatAmount(value, decimals = 0) {
   return decimals > 0 ? amount.toFixed(decimals) : String(Math.round(amount));
 }
 
+function deriveOriginalFeeFromPayable(payableFee, discountType = "", discountValue = 0) {
+  const payableValue = toNumberOrNull(payableFee);
+  const value = toNumberOrNull(discountValue);
+  const normalizedType = normalizeDiscountType(discountType);
+
+  if (payableValue === null || value === null || value <= 0 || !normalizedType) return null;
+
+  if (normalizedType === "Amount") {
+    return payableValue + value;
+  }
+
+  const percentage = Math.min(value, 100);
+  if (percentage <= 0 || percentage >= 100) return null;
+
+  return Math.round(payableValue / (1 - percentage / 100));
+}
+
+function ensurePageSpace(doc, y, requiredHeight, nextPageY = PAGE_TOP_Y) {
+  if (y + requiredHeight <= PAGE_BOTTOM_Y) return y;
+  doc.addPage();
+  return nextPageY;
+}
+
 function formatDuration(value) {
   const content = safeText(value);
   if (/month/i.test(content)) return content;
@@ -176,12 +204,6 @@ function buildInstallmentRows(enrollment, courseFee, amountPaid) {
     ? Math.max(Number(enrollment.installments_planned) || 1, 1)
     : 1;
   const remainingAmount = Math.max((Number(courseFee || 0) || 0) - (Number(amountPaid || 0) || 0), 0);
-  const rowAmounts = splitAmountEvenly(
-    remainingAmount > 0
-      ? remainingAmount
-      : (toNumberOrNull(enrollment.installment_amount) || 0) * emiCount,
-    emiCount,
-  );
   const paymentHistory = normalizePaymentHistoryList(enrollment.payment_history, {
     totalFee: courseFee,
     paymentPlan,
@@ -189,13 +211,24 @@ function buildInstallmentRows(enrollment, courseFee, amountPaid) {
     installmentsPlanned: enrollment.installments_planned || 0,
     amountPaid,
   });
+  const installmentsPaid = Math.min(
+    Number(enrollment.installments_paid) || Number(paymentHistory[0]?.installments_paid) || paymentHistory.length || 0,
+    emiCount,
+  );
+  const remainingInstallments = Math.max(emiCount - installmentsPaid, remainingAmount > 0 ? 1 : 0);
+  const rowAmounts = splitAmountEvenly(
+    remainingAmount > 0
+      ? remainingAmount
+      : (toNumberOrNull(enrollment.installment_amount) || 0) * remainingInstallments,
+    remainingInstallments || 1,
+  );
   const latestPaidDate = paymentHistory[0]?.date || enrollment.last_payment_date || "";
   const anchorDate = enrollment.next_due_date
     || addMonthsPreservingDay(latestPaidDate || enrollment.enrolled_date || enrollment.lead_date || enrollment.created_at || toIsoDate(new Date()), latestPaidDate ? 0 : 1);
 
-  return Array.from({ length: emiCount }, (_, index) => {
+  return Array.from({ length: remainingInstallments }, (_, index) => {
     return {
-      installment: index + 1,
+      installment: installmentsPaid + index + 1,
       dueDate: index === 0 ? anchorDate : addMonthsPreservingDay(anchorDate, index),
       amount: Number(rowAmounts[index] || 0),
     };
@@ -243,8 +276,42 @@ export async function buildEnrollmentPdfDocument(payload) {
   const company = resolveCompanyDetails(payload);
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
 
-  const courseFee = toNumberOrNull(enrollment.total_fee) ?? toNumberOrNull(course?.fee) ?? 0;
+  const savedPayableFee = toNumberOrNull(enrollment.total_fee) ?? 0;
+  const catalogFee = toNumberOrNull(course?.fee);
+  const storedOriginalFee = toNumberOrNull(enrollment.original_fee);
+  const storedDiscountAmount = toNumberOrNull(enrollment.discount_amount);
+  const hasStoredDiscount = Boolean(enrollment.discount_type && toNumberOrNull(enrollment.discount_value));
+  const derivedOriginalFee = deriveOriginalFeeFromPayable(
+    savedPayableFee,
+    enrollment.discount_type,
+    enrollment.discount_value,
+  );
+  const catalogDiscountAmount = catalogFee && savedPayableFee && catalogFee > savedPayableFee
+    ? catalogFee - savedPayableFee
+    : 0;
+  const originalFee = (() => {
+    if (
+      hasStoredDiscount
+      && derivedOriginalFee !== null
+      && savedPayableFee
+      && (storedOriginalFee === null || storedOriginalFee <= savedPayableFee)
+    ) {
+      return derivedOriginalFee;
+    }
+    if (catalogDiscountAmount && (storedOriginalFee === null || storedOriginalFee <= savedPayableFee)) return catalogFee;
+    if (storedDiscountAmount && savedPayableFee && (storedOriginalFee === null || storedOriginalFee <= savedPayableFee)) {
+      return savedPayableFee + storedDiscountAmount;
+    }
+    if (storedOriginalFee !== null) return storedOriginalFee;
+    if (catalogFee !== null && (!savedPayableFee || catalogFee >= savedPayableFee)) return catalogFee;
+    if (hasStoredDiscount && derivedOriginalFee !== null) return derivedOriginalFee;
+    return savedPayableFee;
+  })();
+  const calculatedDiscountAmount = resolveDiscountAmount(originalFee, enrollment.discount_type, enrollment.discount_value);
+  const discountAmount = calculatedDiscountAmount || storedDiscountAmount || catalogDiscountAmount;
+  const courseFee = savedPayableFee || resolvePayableFee(originalFee, enrollment.discount_type, enrollment.discount_value) || 0;
   const amountPaid = resolveAmountPaid(enrollment.amount_paid, enrollment.payment_history);
+  const remainingAmount = Math.max(courseFee - (Number(amountPaid || 0) || 0), 0);
   const paymentPlan = inferPaymentPlan({
     paymentPlan: enrollment.payment_plan || "",
     installmentsPlanned: enrollment.installments_planned || 0,
@@ -253,9 +320,14 @@ export async function buildEnrollmentPdfDocument(payload) {
   });
   const installmentRows = buildInstallmentRows(enrollment, courseFee, amountPaid);
   const emiCount = Math.max(Number(enrollment.installments_planned) || installmentRows.length || 1, 1);
+  const remainingInstallments = paymentPlan === "EMI" ? installmentRows.length : 0;
+  const installmentsPaid = paymentPlan === "EMI" ? Math.max(emiCount - remainingInstallments, 0) : amountPaid > 0 ? 1 : 0;
   const monthlyInstallmentAmount = paymentPlan === "EMI"
-    ? Number(installmentRows[0]?.amount || toNumberOrNull(enrollment.installment_amount) || 0)
+    ? Number(installmentRows[0]?.amount || 0)
     : Number(courseFee || 0);
+  const discountLabel = enrollment.discount_type === "Percentage" && toNumberOrNull(enrollment.discount_value)
+    ? `Discount (${Number(enrollment.discount_value)}%)`
+    : "Discount";
   const courseName = safeText(course?.course_name || enrollment.course_name);
   const startDate = enrollment.enrolled_date || enrollment.lead_date || enrollment.created_at || "";
   const duration = formatDuration(course?.duration || enrollment.duration || "N/A");
@@ -321,13 +393,30 @@ export async function buildEnrollmentPdfDocument(payload) {
   });
 
   y += 4;
+  y = ensurePageSpace(doc, y, 78);
   y = drawField(doc, "Phone", student.phone, y);
+  y = ensurePageSpace(doc, y, 13);
   y = drawField(doc, "Address", normalizeAddress(student), y, { maxLines: 3 });
+  y = ensurePageSpace(doc, y, 15);
   y = drawField(doc, "Course Name", courseName, y, { maxLines: 2 });
+  y = ensurePageSpace(doc, y, 10);
   y = drawField(doc, "Start Date", formatDisplayDate(startDate), y);
+  y = ensurePageSpace(doc, y, 10);
   y = drawField(doc, "Duration", duration, y);
-  y = drawField(doc, "Course Fees", formatAmount(courseFee), y);
+  if (discountAmount > 0) {
+    y = ensurePageSpace(doc, y, 20);
+    y = drawField(doc, "Original Course Fees", formatAmount(originalFee), y);
+    y = drawField(doc, discountLabel, formatAmount(discountAmount), y);
+  }
+  y = ensurePageSpace(doc, y, 48);
+  y = drawField(doc, discountAmount > 0 ? "Final Payable Fees" : "Course Fees", formatAmount(courseFee), y);
+  y = drawField(doc, "Amount Paid", formatAmount(amountPaid), y);
+  y = drawField(doc, "Remaining Amount", formatAmount(remainingAmount), y);
   y = drawField(doc, "Number of EMI", String(emiCount), y);
+  if (paymentPlan === "EMI") {
+    y = drawField(doc, "Installments Paid", `${installmentsPaid}/${emiCount}`, y);
+    y = drawField(doc, "Remaining EMI", String(remainingInstallments), y);
+  }
   y = drawField(doc, "Monthly Installment Amount", formatAmount(monthlyInstallmentAmount), y, {
     colonX: 60,
     valueX: 65,
@@ -336,6 +425,7 @@ export async function buildEnrollmentPdfDocument(payload) {
   });
 
   y += 5;
+  y = ensurePageSpace(doc, y, 8 + (installmentRows.length * 6.4));
   drawText(doc, "Installment Details:", 12, y, {
     style: "bold",
     size: 9.2,
@@ -344,6 +434,7 @@ export async function buildEnrollmentPdfDocument(payload) {
 
   installmentRows.forEach((row, index) => {
     y += 6.4;
+    y = ensurePageSpace(doc, y, 7);
     drawText(doc, `${row.installment}. ${formatInstallmentDate(row.dueDate)} : ${formatAmount(row.amount, 2)}`, 12, y, {
       size: 8.7,
       color: COLORS.black,
@@ -351,6 +442,7 @@ export async function buildEnrollmentPdfDocument(payload) {
   });
 
   y += 14;
+  y = ensurePageSpace(doc, y, 38);
   drawText(doc, "Placement Eligibility:", 12, y, {
     style: "bold",
     size: 9.2,
@@ -369,6 +461,7 @@ export async function buildEnrollmentPdfDocument(payload) {
   });
 
   y += 14;
+  y = ensurePageSpace(doc, y, 20);
   drawText(doc, "Required Document:", 12, y, {
     style: "bold",
     size: 9.2,
@@ -380,11 +473,19 @@ export async function buildEnrollmentPdfDocument(payload) {
     color: COLORS.black,
   });
 
-  drawText(doc, "Signature", 12, 258, {
+  let signatureY = Math.max(y + 18, 258);
+  if (signatureY > 282) {
+    doc.addPage();
+    signatureY = 36;
+  }
+
+  drawLine(doc, 12, signatureY - 3, 62, signatureY - 3, 0.2, COLORS.black);
+  drawLine(doc, 165, signatureY - 3, 198, signatureY - 3, 0.2, COLORS.black);
+  drawText(doc, "Signature", 12, signatureY, {
     size: 8.7,
     color: COLORS.black,
   });
-  drawText(doc, "Seal", 165, 258, {
+  drawText(doc, "Seal", 165, signatureY, {
     size: 8.7,
     color: COLORS.black,
   });

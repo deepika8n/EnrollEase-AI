@@ -2,24 +2,21 @@ import { useEffect, useId, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DocumentPreview from "./DocumentPreview";
 import { useApp } from "../context/AppContext";
-import { batchOptions, findCourseByReference, getCourseFormOptions } from "../data/courseCatalog";
+import { batchOptions, findCourseByReference, getCourseFormOptions, normalizeBatchName } from "../data/courseCatalog";
 import { paymentMethods, paymentPlans } from "../utils/constants";
 import {
   aadhaarFileAccept,
-  extractPdfTextFromSource,
   fileToDataUrl,
   imageFileAccept,
-  isImageSource,
-  isPdfSource,
 } from "../utils/fileHelpers";
 import { getEnrollmentTimelineValidationMessage, getTodayIsoDate } from "../utils/enrollmentDateValidation";
 import { formatCurrency } from "../utils/formatters";
-import { resolveNextDueDate } from "../utils/paymentHelpers";
+import { resolveDiscountAmount, resolveNextDueDate, resolvePayableFee } from "../utils/paymentHelpers";
 import { getNextEnrolledStudentCode } from "../utils/studentCode";
 
 const currentActivityOptions = ["Student", "Working"];
-const allowedImageExtensions = [".png", ".jpg", ".jpeg"];
-const allowedImageMimeTypes = new Set(["image/png", "image/jpeg"]);
+const allowedPhotoExtensions = [".png", ".jpg", ".jpeg", ".pdf"];
+const allowedPhotoMimeTypes = new Set(["image/png", "image/jpeg", "application/pdf"]);
 const allowedAadhaarExtensions = [".png", ".jpg", ".jpeg", ".pdf"];
 const allowedAadhaarMimeTypes = new Set(["image/png", "image/jpeg", "application/pdf"]);
 const identifyingStudentFields = ["full_name", "email", "phone", "alternate_phone", "aadhaar_id", "guardian_phone"];
@@ -31,7 +28,6 @@ function createBlankForm() {
     email: "",
     phone: "",
     alternate_phone: "",
-    college_name: "",
     current_activity: "",
     place: "",
     address: "",
@@ -50,6 +46,9 @@ function createBlankForm() {
     payment_plan: "One Time",
     payment_method: "UPI",
     total_fee: "",
+    original_fee: "",
+    discount_type: "",
+    discount_value: "",
     amount_paid: "",
     installments_planned: 1,
     installment_amount: "",
@@ -83,8 +82,8 @@ function findDocumentPreview(record, documentTypes) {
   return record?.documents?.find((item) => types.includes(item.document_type))?.file_url || "";
 }
 
-function calculateInstallmentAmount(totalFee, amountPaid, paymentPlan, installmentsPlanned) {
-  const numericFee = Number(totalFee || 0);
+function calculateInstallmentAmount(payableFee, amountPaid, paymentPlan, installmentsPlanned) {
+  const numericFee = Number(payableFee || 0);
   const numericPaid = Number(amountPaid || 0);
   if (!numericFee || paymentPlan !== "EMI") return "";
   const remainingAmount = Math.max(numericFee - numericPaid, 0);
@@ -121,21 +120,6 @@ function normalizeInstallmentsCount(value, fallback = 1) {
   return count > 0 ? count : fallback;
 }
 
-function extractAadhaarNumberFromText(value) {
-  const text = String(value || "");
-  const groupedMatch = text.match(/\b\d{4}\s\d{4}\s\d{4}\b/);
-  if (groupedMatch) {
-    return normalizeAadhaarDigits(groupedMatch[0]);
-  }
-
-  const continuousMatch = text.match(/\b\d{12}\b/);
-  if (continuousMatch) {
-    return normalizeAadhaarDigits(continuousMatch[0]);
-  }
-
-  return "";
-}
-
 function fileMatchesAllowedTypes(file, mimeTypes, extensions) {
   if (!file) return false;
 
@@ -156,13 +140,6 @@ function assertAllowedFileType(file, fieldLabel, { mimeTypes, extensions, allowe
   if (!fileMatchesAllowedTypes(file, mimeTypes, extensions)) {
     throw new Error(`${fieldLabel} must be ${allowedLabel}.`);
   }
-}
-
-function appendVerificationNote(remarks, status, warning = "") {
-  const note = [`Aadhaar verification: ${status}`, warning].filter(Boolean).join(" | ");
-  if (!note) return remarks || "";
-  if (!remarks) return note;
-  return remarks.includes(note) ? remarks : `${remarks}\n${note}`;
 }
 
 function sanitizeRemarks(value) {
@@ -204,60 +181,13 @@ async function buildSingleDocumentFromFile(file, documentType, remarksPrefix, ex
   };
 }
 
-async function verifyAadhaarDocument({ documentSource }) {
-  if (!documentSource) {
-    return {
-      status: "Not Verified",
-      warning: "Aadhaar could not be auto-verified. Manual verification required.",
-      aadhaarId: "",
-    };
-  }
-
-  if (!isPdfSource(documentSource)) {
-    return {
-      status: "Manual Review",
-      warning: "Image Aadhaar uploaded. Manual verification required.",
-      aadhaarId: "",
-    };
-  }
-
-  try {
-    const extractedText = await extractPdfTextFromSource(documentSource);
-    if (!extractedText) {
-      return {
-        status: "Manual Review",
-        warning: "Aadhaar could not be auto-verified. Manual verification required.",
-        aadhaarId: "",
-      };
-    }
-
-    const extractedAadhaarId = extractAadhaarNumberFromText(extractedText);
-    if (extractedAadhaarId) {
-      return {
-        status: "Matched",
-        warning: "",
-        aadhaarId: extractedAadhaarId,
-      };
-    }
-
-    return {
-      status: "Manual Review",
-      warning: "Aadhaar number could not be read from the uploaded PDF. Please upload a clearer Aadhaar PDF.",
-      aadhaarId: "",
-    };
-  } catch {
-    return {
-      status: "Manual Review",
-      warning: "Aadhaar could not be auto-verified. Manual verification required.",
-      aadhaarId: "",
-    };
-  }
-}
-
 function buildConvertForm(record) {
   const { course, enrollment, student } = record;
   const paymentPlan = enrollment.payment_plan && enrollment.payment_plan !== "Pending" ? enrollment.payment_plan : "One Time";
-  const totalFee = String(enrollment.total_fee || course?.fee || "");
+  const originalFee = String(enrollment.original_fee || enrollment.total_fee || course?.fee || "");
+  const discountType = enrollment.discount_type || "";
+  const discountValue = String(enrollment.discount_value || "");
+  const totalFee = String(resolvePayableFee(originalFee, discountType, discountValue) || enrollment.total_fee || course?.fee || "");
   const amountPaid = Number(enrollment.amount_paid || 0);
   const installmentsPlanned = Number(enrollment.installments_planned || (paymentPlan === "EMI" ? 3 : 1));
   const paymentStatus = calculatePaymentStatus(totalFee, amountPaid);
@@ -277,7 +207,6 @@ function buildConvertForm(record) {
     email: student.email || "",
     phone: student.phone || "",
     alternate_phone: student.alternate_phone || "",
-    college_name: student.college_name || "",
     current_activity: student.current_activity || "Student",
     place: student.place || "",
     address: student.address || "",
@@ -289,13 +218,16 @@ function buildConvertForm(record) {
     course_id: course?.id || enrollment.course_id || "",
     course_name: course?.course_name || enrollment.course_name || "",
     lead_date: enrollment.lead_date || getTodayIsoDate(),
-    batch: enrollment.batch || "",
+    batch: normalizeBatchName(enrollment.batch) || "",
     enrolled_date: enrollment.enrolled_date || getTodayIsoDate(),
     last_payment_date: enrollment.last_payment_date || "",
     pipeline_stage: "Enrolled",
     payment_plan: paymentPlan,
     payment_method: enrollment.payment_method && enrollment.payment_method !== "Pending" ? enrollment.payment_method : "UPI",
     total_fee: totalFee,
+    original_fee: originalFee,
+    discount_type: discountType,
+    discount_value: discountValue,
     amount_paid: String(amountPaid),
     installments_planned: installmentsPlanned,
     installment_amount: String(
@@ -334,13 +266,14 @@ export default function EnrollmentForm({
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [duplicateCandidate, setDuplicateCandidate] = useState(null);
-  const [aadhaarVerificationNotice, setAadhaarVerificationNotice] = useState(null);
   const todayIsoDate = getTodayIsoDate();
   const selectedCourse = findCourseByReference(courseOptions, [form.course_id, form.course_name]);
-  const totalFeeValue = Number(form.total_fee || selectedCourse?.fee || 0);
+  const originalFeeValue = Number(form.original_fee || form.total_fee || selectedCourse?.fee || 0);
+  const discountAmountValue = resolveDiscountAmount(originalFeeValue, form.discount_type, form.discount_value);
+  const payableFeeValue = resolvePayableFee(originalFeeValue, form.discount_type, form.discount_value);
   const amountPaidValue = Number(form.amount_paid || 0);
-  const remainingAmountValue = Math.max(totalFeeValue - amountPaidValue, 0);
-  const paymentStatusValue = totalFeeValue > 0
+  const remainingAmountValue = Math.max(payableFeeValue - amountPaidValue, 0);
+  const paymentStatusValue = payableFeeValue > 0
     ? remainingAmountValue === 0
       ? "Paid"
       : amountPaidValue > 0
@@ -369,7 +302,6 @@ export default function EnrollmentForm({
       email: uniqueValues(students.map((item) => item.email)),
       phone: uniqueValues(students.map((item) => item.phone)),
       alternate_phone: uniqueValues(students.map((item) => item.alternate_phone)),
-      college_name: uniqueValues(students.map((item) => item.college_name)),
       current_activity: uniqueValues(students.map((item) => item.current_activity)),
       place: uniqueValues(students.map((item) => item.place)),
       guardian_name: uniqueValues(students.map((item) => item.guardian_name)),
@@ -407,7 +339,6 @@ export default function EnrollmentForm({
     setAadhaarPreview(convertRecord.student.aadhaar_document_url || findDocumentPreview(convertRecord, "Aadhaar ID Photo") || "");
     setPhotoDocument(null);
     setAadhaarDocument(null);
-    setAadhaarVerificationNotice(null);
     setDuplicateCandidate(null);
     setSubmitError("");
   }, [convertRecord, isConvertMode, nextEnrolledStudentCode]);
@@ -420,7 +351,6 @@ export default function EnrollmentForm({
     setAadhaarPreview("");
     setPhotoDocument(null);
     setAadhaarDocument(null);
-    setAadhaarVerificationNotice(null);
     setDuplicateCandidate(null);
     setSubmitError("");
   }, [convertEnrollmentId, isConvertMode]);
@@ -479,11 +409,13 @@ export default function EnrollmentForm({
         ...prev,
         ...nextValues,
       };
+      const nextOriginalFee = nextForm.original_fee || nextForm.total_fee;
+      const nextPayableFee = resolvePayableFee(nextOriginalFee, nextForm.discount_type, nextForm.discount_value);
       const paymentPlan = nextForm.payment_plan || "One Time";
       const installmentsPlanned = paymentPlan === "EMI"
         ? normalizeInstallmentsCount(nextForm.installments_planned, normalizeInstallmentsCount(prev.installments_planned, 3))
         : 1;
-      const paymentStatus = calculatePaymentStatus(nextForm.total_fee, nextForm.amount_paid);
+      const paymentStatus = calculatePaymentStatus(nextPayableFee, nextForm.amount_paid);
       const autoNextDueDate = paymentPlan === "EMI" && !Object.prototype.hasOwnProperty.call(nextValues, "next_due_date")
         ? resolveNextDueDate({
           paymentStatus,
@@ -496,11 +428,12 @@ export default function EnrollmentForm({
         ...nextForm,
         installments_planned: installmentsPlanned,
         installment_amount: calculateInstallmentAmount(
-          nextForm.total_fee,
+          nextPayableFee,
           nextForm.amount_paid,
           paymentPlan,
           installmentsPlanned,
         ),
+        total_fee: String(nextPayableFee || ""),
         next_due_date: paymentPlan === "EMI" ? autoNextDueDate : "",
       };
     });
@@ -520,7 +453,6 @@ export default function EnrollmentForm({
       email: matchedStudent.email || prev.email,
       phone: matchedStudent.phone || prev.phone,
       alternate_phone: matchedStudent.alternate_phone || prev.alternate_phone,
-      college_name: matchedStudent.college_name || prev.college_name,
       current_activity: matchedStudent.current_activity || prev.current_activity,
       place: matchedStudent.place || prev.place,
       lead_source: matchedStudent.lead_source || prev.lead_source,
@@ -548,9 +480,9 @@ export default function EnrollmentForm({
     try {
       setSubmitError("");
       assertAllowedFileType(file, "Student photo", {
-        mimeTypes: allowedImageMimeTypes,
-        extensions: allowedImageExtensions,
-        allowedLabel: "a PNG, JPG, or JPEG image",
+        mimeTypes: allowedPhotoMimeTypes,
+        extensions: allowedPhotoExtensions,
+        allowedLabel: "a PNG, JPG, JPEG, or PDF file",
       });
       const nextDocument = await buildSingleDocumentFromFile(file, "Student Photo", "Student photo upload");
       setPhotoDocument(nextDocument);
@@ -573,7 +505,6 @@ export default function EnrollmentForm({
       const nextDocument = await buildSingleDocumentFromFile(file, "Aadhaar ID Photo", "Aadhaar upload");
       setAadhaarDocument(nextDocument);
       setAadhaarPreview(nextDocument?.file_url || aadhaarPreview);
-      setAadhaarVerificationNotice(null);
     } catch (error) {
       setSubmitError(error.message || "Unable to upload Aadhaar document.");
     }
@@ -583,10 +514,8 @@ export default function EnrollmentForm({
     event.preventDefault();
     setSubmitError("");
     setSubmitting(true);
-    setAadhaarVerificationNotice(null);
 
     try {
-      let aadhaarVerification = null;
       let resolvedAadhaarDigits = "";
       const timelineValidationMessage = getEnrollmentTimelineValidationMessage({
         leadDate: form.lead_date,
@@ -608,16 +537,7 @@ export default function EnrollmentForm({
         if (!photoPreview || !aadhaarPreview) {
           throw new Error("Student photo and Aadhaar upload are required before completing enrollment.");
         }
-        if (!isImageSource(photoPreview)) {
-          throw new Error("Student photo must be a PNG, JPG, or JPEG image.");
-        }
-
-        aadhaarVerification = await verifyAadhaarDocument({
-          documentSource: aadhaarDocument?.file_url || aadhaarPreview,
-        });
-        resolvedAadhaarDigits = normalizeAadhaarDigits(
-          aadhaarVerification.aadhaarId || convertRecord?.student?.aadhaar_id || "",
-        );
+        resolvedAadhaarDigits = normalizeAadhaarDigits(convertRecord?.student?.aadhaar_id || "");
       }
 
       const duplicateRecord = findDuplicateRecord(
@@ -639,7 +559,9 @@ export default function EnrollmentForm({
       }
 
       if (isConvertMode) {
-        const totalFee = Number(form.total_fee || selectedCourse?.fee || 0);
+        const originalFee = Number(form.original_fee || form.total_fee || selectedCourse?.fee || 0);
+        const discountAmount = resolveDiscountAmount(originalFee, form.discount_type, form.discount_value);
+        const totalFee = resolvePayableFee(originalFee, form.discount_type, form.discount_value);
         const amountPaid = Number(form.amount_paid || 0);
         const installmentsPlanned = Number(form.installments_planned || 0);
 
@@ -665,18 +587,9 @@ export default function EnrollmentForm({
           throw new Error("Next due date is required after recording an EMI payment.");
         }
 
-        if (aadhaarVerification.warning) {
-          setAadhaarVerificationNotice(aadhaarVerification.warning);
-        }
-
         const documents = [
           photoDocument?.file_url ? photoDocument : null,
-          aadhaarDocument?.file_url
-            ? {
-              ...aadhaarDocument,
-              remarks: appendVerificationNote(aadhaarDocument.remarks, aadhaarVerification.status, aadhaarVerification.warning),
-            }
-            : null,
+          aadhaarDocument?.file_url ? aadhaarDocument : null,
         ].filter(Boolean);
         await convertEnquiryToEnrollment({
           enrollmentId: convertRecord.enrollment.id,
@@ -686,7 +599,6 @@ export default function EnrollmentForm({
             email: form.email,
             phone: form.phone,
             alternate_phone: form.alternate_phone,
-            college_name: form.college_name,
             current_activity: form.current_activity,
             place: form.place,
             address: form.address,
@@ -709,6 +621,10 @@ export default function EnrollmentForm({
             payment_plan: form.payment_plan,
             payment_method: form.payment_method,
             total_fee: totalFee,
+            original_fee: originalFee,
+            discount_type: form.discount_type,
+            discount_value: Number(form.discount_value || 0),
+            discount_amount: discountAmount,
             amount_paid: amountPaid,
             installments_planned: form.payment_plan === "EMI" ? installmentsPlanned : 1,
             installment_amount: Number(form.payment_plan === "EMI" ? form.installment_amount || 0 : 0),
@@ -735,7 +651,6 @@ export default function EnrollmentForm({
             email: form.email,
             phone: form.phone,
             alternate_phone: "",
-            college_name: form.college_name,
             current_activity: form.current_activity,
             place: form.place,
             address: "",
@@ -775,7 +690,6 @@ export default function EnrollmentForm({
         setPhotoDocument(null);
         setAadhaarDocument(null);
         setDuplicateCandidate(null);
-        setAadhaarVerificationNotice(null);
         setSubmitError("");
 
         finalizeSuccess({
@@ -828,13 +742,6 @@ export default function EnrollmentForm({
               Dismiss
             </button>
           </div>
-        </section>
-      ) : null}
-
-      {aadhaarVerificationNotice ? (
-        <section className="panel mb-6 p-6">
-          <p className="section-kicker">Aadhaar Validation</p>
-          <p className="mt-3 text-sm font-semibold text-brand-500">{aadhaarVerificationNotice}</p>
         </section>
       ) : null}
 
@@ -906,14 +813,15 @@ export default function EnrollmentForm({
               value={form.course_id}
               onChange={(event) => {
                 const course = findCourseByReference(courseOptions, event.target.value);
-                const nextFee = isConvertMode ? String(form.total_fee || course?.fee || "") : form.total_fee;
+                const nextFee = isConvertMode ? String(form.original_fee || form.total_fee || course?.fee || "") : form.total_fee;
                 setForm((prev) => ({
                   ...prev,
                   course_id: event.target.value,
                   course_name: course?.course_name || "",
-                  total_fee: nextFee,
+                  original_fee: nextFee,
+                  total_fee: String(resolvePayableFee(nextFee, prev.discount_type, prev.discount_value) || ""),
                   installment_amount: isConvertMode
-                    ? calculateInstallmentAmount(nextFee, prev.amount_paid, prev.payment_plan, prev.installments_planned)
+                    ? calculateInstallmentAmount(resolvePayableFee(nextFee, prev.discount_type, prev.discount_value), prev.amount_paid, prev.payment_plan, prev.installments_planned)
                     : prev.installment_amount,
                 }));
               }}
@@ -1028,16 +936,41 @@ export default function EnrollmentForm({
                     type="number"
                     min="0"
                     placeholder="Enter total course fee"
-                    value={form.total_fee}
-                    onChange={(event) => syncPaymentFields({ total_fee: event.target.value })}
+                    value={form.original_fee || form.total_fee}
+                    onChange={(event) => syncPaymentFields({ original_fee: event.target.value })}
                     required
                   />
+                </LabeledField>
+                <LabeledField label="Discount Type">
+                  <select
+                    value={form.discount_type}
+                    onChange={(event) => syncPaymentFields({ discount_type: event.target.value, discount_value: event.target.value ? form.discount_value : "" })}
+                  >
+                    <option value="">No discount</option>
+                    <option value="Percentage">Percentage</option>
+                    <option value="Amount">Amount</option>
+                  </select>
+                </LabeledField>
+                {form.discount_type ? (
+                  <LabeledField label={form.discount_type === "Percentage" ? "Discount (%)" : "Discount Amount (Rs)"}>
+                    <input
+                      type="number"
+                      min="0"
+                      max={form.discount_type === "Percentage" ? "100" : form.original_fee || form.total_fee || undefined}
+                      placeholder={form.discount_type === "Percentage" ? "Example: 10" : "Example: 5000"}
+                      value={form.discount_value}
+                      onChange={(event) => syncPaymentFields({ discount_value: event.target.value })}
+                    />
+                  </LabeledField>
+                ) : null}
+                <LabeledField label="Final Payable Fee (Rs)">
+                  <input value={String(payableFeeValue)} readOnly aria-label="Final Payable Fee" />
                 </LabeledField>
                 <LabeledField label="Amount Paid (Rs) *">
                   <input
                     type="number"
                     min="0"
-                    max={form.total_fee || undefined}
+                    max={payableFeeValue || undefined}
                     placeholder="Enter amount received"
                     value={form.amount_paid}
                     onChange={(event) => syncPaymentFields({ amount_paid: event.target.value })}
@@ -1087,17 +1020,20 @@ export default function EnrollmentForm({
               </div>
 
               {selectedCourse ? (
-                <p className="mt-4 text-sm font-semibold text-brand-500">Selected fee: {formatCurrency(form.total_fee || selectedCourse.fee)}</p>
+                <p className="mt-4 text-sm font-semibold text-brand-500">
+                  Selected fee: {formatCurrency(originalFeeValue || selectedCourse.fee)}
+                  {discountAmountValue > 0 ? ` | Discount: ${formatCurrency(discountAmountValue)} | Payable: ${formatCurrency(payableFeeValue)}` : ""}
+                </p>
               ) : null}
             </section>
 
             <section className="panel p-6">
-              <h2 className="section-title">Document Uploads</h2>
+              <h2 className="section-title">Student Uploads</h2>
               <div className="mt-6 grid gap-5 md:grid-cols-2">
                 <div className="flex min-h-[22rem] flex-col rounded-[24px] border border-dashed border-slate-300 bg-slate-50 p-5">
                   <div>
                     <p className="font-semibold text-slate-900">Student photo</p>
-                    <p className="mt-1 text-sm text-slate-500">Upload only PNG, JPG, or JPEG.</p>
+                    <p className="mt-1 text-sm text-slate-500">Upload PNG, JPG, JPEG, or PDF.</p>
                   </div>
                   <input
                     type="file"

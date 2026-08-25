@@ -15,7 +15,6 @@ type StudentRecord = {
   phone?: string | null;
   current_activity?: string | null;
   place?: string | null;
-  college_name?: string | null;
   notes?: string | null;
   lead_source?: string | null;
 };
@@ -310,7 +309,6 @@ Deno.serve(async (request) => {
       phone,
       current_activity: currentActivity,
       place,
-      college_name: sanitize(studentInput.college_name),
       lead_source: "Online Enquiry",
       notes: remarks,
     };

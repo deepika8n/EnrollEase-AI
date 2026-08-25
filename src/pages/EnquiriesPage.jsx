@@ -321,7 +321,11 @@ export default function EnquiriesPage() {
   const enquiries = useMemo(
     () =>
       allPortalRecords.filter((record) => {
-        if (record.isEnrolledRecord || record.isDropoutRecord) {
+        const pipelineStage = String(record?.enrollment?.pipeline_stage || record?.currentStage || "").trim().toLowerCase();
+        const enrollmentStatus = String(record?.enrollment?.enrollment_status || "").trim().toLowerCase();
+        const isOnlyEnquiry = record.isEnquiryRecord || pipelineStage === "enquiry" || pipelineStage === "inquiry";
+
+        if (!isOnlyEnquiry || record.isEnrolledRecord || record.isDropoutRecord || pipelineStage === "enrolled" || pipelineStage === "dropout" || enrollmentStatus === "dropped") {
           return false;
         }
 
