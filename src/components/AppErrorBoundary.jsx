@@ -38,7 +38,7 @@ export default class AppErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-canvas px-3 sm:px-6">
+        <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-canvas px-3 sm:px-6">
           <div className="hero-orb left-[-5rem] top-10 h-56 w-56 bg-brand-100/70" />
           <div className="hero-orb bottom-[-6rem] right-[-3rem] h-72 w-72 bg-accent-100/70" />
           <div className="panel relative w-full max-w-2xl px-5 py-8 text-center sm:px-8 sm:py-10">

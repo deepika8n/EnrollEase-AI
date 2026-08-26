@@ -423,7 +423,7 @@ export default function LandingPageSimple() {
   };
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(11,53,88,0.08),transparent_24%),radial-gradient(circle_at_82%_10%,rgba(77,122,156,0.07),transparent_20%),radial-gradient(circle_at_66%_78%,rgba(30,207,107,0.05),transparent_17%),linear-gradient(180deg,#fcfdff_0%,#f5f8fb_100%)] text-brand-500">
+    <div className="relative min-h-dvh overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(11,53,88,0.08),transparent_24%),radial-gradient(circle_at_82%_10%,rgba(77,122,156,0.07),transparent_20%),radial-gradient(circle_at_66%_78%,rgba(30,207,107,0.05),transparent_17%),linear-gradient(180deg,#fcfdff_0%,#f5f8fb_100%)] text-brand-500">
       <div className="pointer-events-none absolute left-[-4rem] top-[-3rem] h-72 w-72 rounded-full bg-brand-200/30 blur-[110px]" />
       <div className="pointer-events-none absolute right-[-5rem] top-14 h-[22rem] w-[22rem] rounded-full bg-brand-100/35 blur-[130px]" />
       <div className="pointer-events-none absolute bottom-[-8rem] left-[22%] h-[18rem] w-[18rem] rounded-full bg-accent-100/25 blur-[140px]" />

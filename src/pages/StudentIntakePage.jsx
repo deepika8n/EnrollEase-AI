@@ -425,7 +425,7 @@ export default function StudentIntakePage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-100 px-6">
+      <div className="flex min-h-dvh items-center justify-center bg-slate-100 px-6">
         <div className="panel w-full max-w-lg px-5 py-8 text-center sm:px-8 sm:py-12">
           <h1 className="text-3xl font-semibold text-slate-950">Student Form</h1>
           <p className="mt-3 text-sm text-slate-600">Loading enrollment form...</p>
@@ -436,7 +436,7 @@ export default function StudentIntakePage() {
 
   if (error && !requestData) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-100 px-6">
+      <div className="flex min-h-dvh items-center justify-center bg-slate-100 px-6">
         <div className="panel w-full max-w-xl px-5 py-8 text-center sm:px-8 sm:py-12">
           <h1 className="text-3xl font-semibold text-slate-950">Student Form</h1>
           <p className="mt-4 text-sm font-semibold text-rose-600">{error}</p>
@@ -446,7 +446,7 @@ export default function StudentIntakePage() {
   }
 
   return (
-    <div className="min-h-screen overflow-x-clip bg-slate-100 px-3 py-5 sm:px-4 sm:py-8 md:px-6">
+    <div className="min-h-dvh overflow-x-clip bg-slate-100 px-3 pb-2 pt-5 sm:px-4 sm:py-8 md:px-6">
       <div className="mx-auto max-w-6xl">
         <section className={`mb-6 p-4 sm:p-6 ${formPanelClass}`}>
           <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400">Complete Admission</p>

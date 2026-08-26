@@ -94,12 +94,12 @@ export default function LoginPageSimple() {
   };
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(11,53,88,0.08),transparent_24%),radial-gradient(circle_at_82%_12%,rgba(77,122,156,0.07),transparent_22%),radial-gradient(circle_at_58%_78%,rgba(30,207,107,0.05),transparent_16%),linear-gradient(180deg,#fcfdff_0%,#f5f8fb_100%)] px-3 py-5 sm:px-6 sm:py-6 lg:px-8">
+    <div className="relative min-h-dvh overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(11,53,88,0.08),transparent_24%),radial-gradient(circle_at_82%_12%,rgba(77,122,156,0.07),transparent_22%),radial-gradient(circle_at_58%_78%,rgba(30,207,107,0.05),transparent_16%),linear-gradient(180deg,#fcfdff_0%,#f5f8fb_100%)] px-3 pb-2 pt-5 sm:px-6 sm:py-6 lg:px-8">
       <div className="pointer-events-none absolute left-[7%] top-[10%] h-52 w-52 rounded-full bg-brand-200/16 blur-[110px]" />
       <div className="pointer-events-none absolute right-[9%] top-[18%] h-64 w-64 rounded-full bg-brand-100/18 blur-[130px]" />
       <div className="pointer-events-none absolute bottom-[12%] left-[18%] h-56 w-56 rounded-full bg-accent-100/16 blur-[120px]" />
 
-      <div className="mx-auto flex min-h-[calc(100vh-2.5rem)] w-full max-w-[480px] items-center justify-center sm:min-h-[calc(100vh-3rem)]">
+      <div className="mx-auto flex min-h-[calc(100dvh-1.75rem)] w-full max-w-[480px] items-center justify-center sm:min-h-[calc(100dvh-3rem)]">
         <section className="relative w-full overflow-hidden rounded-[22px] border border-sky-200/80 bg-[linear-gradient(145deg,#eff8ff_0%,#f3fff8_54%,#ffffff_100%)] p-5 shadow-[0_30px_80px_rgba(9,30,66,0.16)] backdrop-blur-[18px] animate-[fadeUp_600ms_ease_both] sm:rounded-[24px] sm:p-[28px]">
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_12%,rgba(47,128,237,0.14),transparent_28%),radial-gradient(circle_at_88%_4%,rgba(30,207,107,0.16),transparent_24%),linear-gradient(145deg,rgba(255,255,255,0.48),rgba(255,255,255,0.2))]" />
           <div className="pointer-events-none absolute inset-x-8 top-0 h-1.5 rounded-b-full bg-gradient-to-r from-brand-500 via-accent-400 to-emerald-400" />

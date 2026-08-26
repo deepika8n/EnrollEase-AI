@@ -153,7 +153,7 @@ export default function PublicEnquiryPage() {
   };
 
   return (
-    <div className="min-h-screen overflow-x-clip bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.10),transparent_24%),radial-gradient(circle_at_92%_18%,rgba(16,185,129,0.10),transparent_20%),radial-gradient(circle_at_42%_96%,rgba(245,158,11,0.12),transparent_18%),linear-gradient(180deg,#f8fbff_0%,#eef4fb_100%)] px-3 py-5 sm:px-4 sm:py-8 md:px-8">
+    <div className="min-h-dvh overflow-x-clip bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.10),transparent_24%),radial-gradient(circle_at_92%_18%,rgba(16,185,129,0.10),transparent_20%),radial-gradient(circle_at_42%_96%,rgba(245,158,11,0.12),transparent_18%),linear-gradient(180deg,#f8fbff_0%,#eef4fb_100%)] px-3 pb-2 pt-5 sm:px-4 sm:py-8 md:px-8">
       <div className="mx-auto max-w-[1480px]">
         <div className="hide-scrollbar mb-8 overflow-x-auto">
           <header className="flex min-w-[760px] items-center justify-between gap-3">
