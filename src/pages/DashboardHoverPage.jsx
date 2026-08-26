@@ -545,11 +545,13 @@ export default function DashboardHoverPage() {
     <AppShell>
       <PageHeader eyebrow="Dashboard" title="Admissions management overview" />
 
-      <section className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {dashboard.cards.map((card) => (
-          <SummaryCard key={card.title} {...card} />
-        ))}
-      </section>
+      <div className="hide-scrollbar -mx-1 overflow-x-auto px-1">
+        <section className="grid min-w-[920px] grid-cols-4 gap-3 xl:min-w-0">
+          {dashboard.cards.map((card) => (
+            <SummaryCard key={card.title} {...card} />
+          ))}
+        </section>
+      </div>
 
       {showDropoutPanel ? (
         <DashboardCard
@@ -625,76 +627,80 @@ export default function DashboardHoverPage() {
         </DashboardCard>
       ) : (
         <div className="space-y-6">
-          <section className="grid min-w-0 gap-5 xl:grid-cols-2">
-            <div onMouseEnter={() => triggerChartHover("enquiries")}>
-              <DashboardCard
-                title="Enquiries vs Enrollments"
-                subtitle="Monthly comparison of incoming leads and confirmed admissions."
-              >
-                <div className="h-[240px] sm:h-[300px]">
-                  <Bar
-                    key={`enquiries-${chartReplay.enquiries}`}
-                    data={dashboard.enquiriesVsEnrollmentsData}
-                    options={barOptions}
-                  />
-                </div>
-              </DashboardCard>
-            </div>
-
-            <div onMouseEnter={() => triggerChartHover("payment")}>
-              <DashboardCard
-                title="Payment Status"
-                subtitle="Share of paid, partial, and pending collections."
-              >
-                <div className="h-[240px] sm:h-[300px]">
-                  <Pie
-                    key={`payment-${chartReplay.payment}`}
-                    data={dashboard.paymentStatusData}
-                    options={circularOptions}
-                  />
-                </div>
-              </DashboardCard>
-            </div>
-          </section>
-
-          <section className="grid min-w-0 gap-5 xl:grid-cols-[1.05fr_0.95fr]">
-            <div onMouseEnter={() => triggerChartHover("monthly")}>
-              <DashboardCard
-                title="Monthly Admissions Trend"
-                subtitle="Confirmed admissions across the recent six-month window."
-              >
-                <div className="h-[240px] sm:h-[300px]">
-                  <Line
-                    key={`monthly-${chartReplay.monthly}`}
-                    data={dashboard.monthlyAdmissionsData}
-                    options={lineOptions}
-                  />
-                </div>
-              </DashboardCard>
-            </div>
-
-            <div onMouseEnter={() => triggerChartHover("course")}>
-              <DashboardCard
-                title="Course-wise Distribution"
-                subtitle="Enquiry and enrollment volume by course."
-              >
-                {dashboard.courseDistribution.length ? (
-                  <div className="space-y-5">
-                    {dashboard.courseDistribution.map((course) => (
-                      <ProgressRow
-                        key={`${course.label}-${chartReplay.course}`}
-                        label={course.label}
-                        value={course.value}
-                        percent={hoverMotion.course && dashboard.coursePeak ? (course.value / dashboard.coursePeak) * 100 : 0}
-                      />
-                    ))}
+          <div className="hide-scrollbar -mx-1 overflow-x-auto px-1">
+            <section className="grid min-w-[980px] grid-cols-2 gap-5 xl:min-w-0">
+              <div onMouseEnter={() => triggerChartHover("enquiries")}>
+                <DashboardCard
+                  title="Enquiries vs Enrollments"
+                  subtitle="Monthly comparison of incoming leads and confirmed admissions."
+                >
+                  <div className="h-[300px]">
+                    <Bar
+                      key={`enquiries-${chartReplay.enquiries}`}
+                      data={dashboard.enquiriesVsEnrollmentsData}
+                      options={barOptions}
+                    />
                   </div>
-                ) : (
-                  <EmptyState message="No course records available for distribution." height="h-[300px]" />
-                )}
-              </DashboardCard>
-            </div>
-          </section>
+                </DashboardCard>
+              </div>
+
+              <div onMouseEnter={() => triggerChartHover("payment")}>
+                <DashboardCard
+                  title="Payment Status"
+                  subtitle="Share of paid, partial, and pending collections."
+                >
+                  <div className="h-[300px]">
+                    <Pie
+                      key={`payment-${chartReplay.payment}`}
+                      data={dashboard.paymentStatusData}
+                      options={circularOptions}
+                    />
+                  </div>
+                </DashboardCard>
+              </div>
+            </section>
+          </div>
+
+          <div className="hide-scrollbar -mx-1 overflow-x-auto px-1">
+            <section className="grid min-w-[980px] grid-cols-[1.05fr_0.95fr] gap-5 xl:min-w-0">
+              <div onMouseEnter={() => triggerChartHover("monthly")}>
+                <DashboardCard
+                  title="Monthly Admissions Trend"
+                  subtitle="Confirmed admissions across the recent six-month window."
+                >
+                  <div className="h-[300px]">
+                    <Line
+                      key={`monthly-${chartReplay.monthly}`}
+                      data={dashboard.monthlyAdmissionsData}
+                      options={lineOptions}
+                    />
+                  </div>
+                </DashboardCard>
+              </div>
+
+              <div onMouseEnter={() => triggerChartHover("course")}>
+                <DashboardCard
+                  title="Course-wise Distribution"
+                  subtitle="Enquiry and enrollment volume by course."
+                >
+                  {dashboard.courseDistribution.length ? (
+                    <div className="space-y-5">
+                      {dashboard.courseDistribution.map((course) => (
+                        <ProgressRow
+                          key={`${course.label}-${chartReplay.course}`}
+                          label={course.label}
+                          value={course.value}
+                          percent={hoverMotion.course && dashboard.coursePeak ? (course.value / dashboard.coursePeak) * 100 : 0}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <EmptyState message="No course records available for distribution." height="h-[300px]" />
+                  )}
+                </DashboardCard>
+              </div>
+            </section>
+          </div>
         </div>
       )}
     </AppShell>
