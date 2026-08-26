@@ -487,7 +487,7 @@ export default function EnquiriesPage() {
 
       <div className="space-y-4">
         {enquiries.map((record) => (
-          <section key={record.id} className="panel p-4">
+          <section key={record.id} className="panel overflow-hidden p-0">
             {(() => {
               const tone = getStudentTone(record.student);
               const initials = buildInitials(record.student.full_name);
@@ -505,93 +505,95 @@ export default function EnquiriesPage() {
               const convertButtonLabel = studentFormStatus === "Sent" ? "Resend Enrollment Form" : "Send Enrollment Form";
 
               return (
-                <>
-                  <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                    <div className="flex min-w-0 items-center gap-2.5 xl:w-[21%]">
-                      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border text-sm font-semibold uppercase tracking-[0.06em] ${tone.badgeClass}`}>
-                        {initials}
+                <div className="hide-scrollbar overflow-x-auto">
+                  <div className="min-w-[1120px] p-4">
+                    <div className="flex min-w-0 items-center justify-between gap-3">
+                      <div className="flex min-w-0 w-[21%] items-center gap-2.5">
+                        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border text-sm font-semibold uppercase tracking-[0.06em] ${tone.badgeClass}`}>
+                          {initials}
+                        </div>
+                        <div className="min-w-0">
+                          <p className={`truncate text-[0.98rem] font-semibold ${tone.nameClass}`}>{record.student.full_name}</p>
+                          <p className="text-[13px] text-slate-500">{record.course?.course_name || "Course pending"}</p>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <p className={`truncate text-[0.98rem] font-semibold ${tone.nameClass}`}>{record.student.full_name}</p>
-                        <p className="text-[13px] text-slate-500">{record.course?.course_name || "Course pending"}</p>
-                      </div>
-                    </div>
 
-                    <div className="grid flex-1 gap-2 text-sm sm:grid-cols-3 xl:max-w-[31rem]">
-                      <div className="rounded-xl bg-slate-50 p-2">
-                        <p className="text-[12px] text-slate-500">Lead date</p>
-                        <p className="mt-0.5 font-semibold text-slate-900">{formatDate(record.enrollment.lead_date)}</p>
+                      <div className="grid max-w-[31rem] flex-1 grid-cols-3 gap-2 text-sm">
+                        <div className="rounded-xl bg-slate-50 p-2">
+                          <p className="text-[12px] text-slate-500">Lead date</p>
+                          <p className="mt-0.5 font-semibold text-slate-900">{formatDate(record.enrollment.lead_date)}</p>
+                        </div>
+                        <div className="rounded-xl bg-slate-50 p-2">
+                          <p className="text-[12px] text-slate-500">Next follow-up</p>
+                          <p className="mt-0.5 font-semibold text-slate-900">{formatDate(followUpMeta.nextFollowUpDate)}</p>
+                        </div>
+                        <div className="rounded-xl bg-slate-50 p-2">
+                          <p className="text-[12px] text-slate-500">I am a</p>
+                          <p className="mt-0.5 font-semibold text-slate-900">{record.student.current_activity || "Not shared yet"}</p>
+                        </div>
                       </div>
-                      <div className="rounded-xl bg-slate-50 p-2">
-                        <p className="text-[12px] text-slate-500">Next follow-up</p>
-                        <p className="mt-0.5 font-semibold text-slate-900">{formatDate(followUpMeta.nextFollowUpDate)}</p>
-                      </div>
-                      <div className="rounded-xl bg-slate-50 p-2">
-                        <p className="text-[12px] text-slate-500">I am a</p>
-                        <p className="mt-0.5 font-semibold text-slate-900">{record.student.current_activity || "Not shared yet"}</p>
-                      </div>
-                    </div>
 
-                    <div className="xl:w-[24%]">
-                      <div className="rounded-[18px] border border-slate-200 bg-white p-2.5">
-                        <p className="text-[12px] text-slate-500">Counsellor note</p>
-                        <p className="mt-1 text-sm text-slate-700">{record.enrollment.remarks || record.student.notes || "No remarks added yet."}</p>
+                      <div className="w-[24%]">
+                        <div className="rounded-[18px] border border-slate-200 bg-white p-2.5">
+                          <p className="text-[12px] text-slate-500">Counsellor note</p>
+                          <p className="mt-1 text-sm text-slate-700">{record.enrollment.remarks || record.student.notes || "No remarks added yet."}</p>
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="grid gap-2.5 sm:flex sm:flex-wrap sm:items-center xl:w-[18%] xl:justify-end">
-                      <button
-                        type="button"
-                        className={`status-pill flex items-center gap-2 ${
-                          followUpMeta.recentSuccess
-                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                            : "border-rose-200 bg-rose-50 text-rose-600"
-                        }`}
-                        onClick={() => setSelectedFollowUpId(record.enrollment.id)}
-                      >
-                        <span
-                          className={`inline-flex h-2.5 w-2.5 rounded-full animate-pulse ${
-                            followUpMeta.recentSuccess ? "bg-emerald-500" : "bg-red-500"
+                      <div className="flex w-[18%] flex-wrap items-center justify-end gap-2.5">
+                        <button
+                          type="button"
+                          className={`status-pill flex items-center gap-2 ${
+                            followUpMeta.recentSuccess
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                              : "border-rose-200 bg-rose-50 text-rose-600"
                           }`}
-                          aria-hidden="true"
-                        />
-                        Follow-up
-                      </button>
-                      <button
-                        type="button"
-                        className="button-primary px-3.5 py-2 text-sm"
-                        onClick={() => handleSendStudentForm(record)}
-                        disabled={convertingId === record.enrollment.id}
-                      >
-                        {convertingId === record.enrollment.id ? "Sending..." : convertButtonLabel}
-                      </button>
-                      <button
-                        type="button"
-                        className="button-secondary px-3.5 py-2 text-sm"
-                        onClick={() => handleMarkDropout(record)}
-                        disabled={dropoutId === record.enrollment.id}
-                      >
-                        {dropoutId === record.enrollment.id ? "Updating..." : "Dropout"}
-                      </button>
-                      <button
-                        type="button"
-                        className="button-secondary px-3.5 py-2 text-sm"
-                        onClick={() => handleDeleteEnquiry(record)}
-                        disabled={deletingId === record.enrollment.id}
-                      >
-                        {deletingId === record.enrollment.id ? "Deleting..." : "Delete"}
-                      </button>
+                          onClick={() => setSelectedFollowUpId(record.enrollment.id)}
+                        >
+                          <span
+                            className={`inline-flex h-2.5 w-2.5 rounded-full animate-pulse ${
+                              followUpMeta.recentSuccess ? "bg-emerald-500" : "bg-red-500"
+                            }`}
+                            aria-hidden="true"
+                          />
+                          Follow-up
+                        </button>
+                        <button
+                          type="button"
+                          className="button-primary px-3.5 py-2 text-sm"
+                          onClick={() => handleSendStudentForm(record)}
+                          disabled={convertingId === record.enrollment.id}
+                        >
+                          {convertingId === record.enrollment.id ? "Sending..." : convertButtonLabel}
+                        </button>
+                        <button
+                          type="button"
+                          className="button-secondary px-3.5 py-2 text-sm"
+                          onClick={() => handleMarkDropout(record)}
+                          disabled={dropoutId === record.enrollment.id}
+                        >
+                          {dropoutId === record.enrollment.id ? "Updating..." : "Dropout"}
+                        </button>
+                        <button
+                          type="button"
+                          className="button-secondary px-3.5 py-2 text-sm"
+                          onClick={() => handleDeleteEnquiry(record)}
+                          disabled={deletingId === record.enrollment.id}
+                        >
+                          {deletingId === record.enrollment.id ? "Deleting..." : "Delete"}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="mt-2.5 flex flex-wrap gap-4 border-t border-slate-100 pt-2.5 text-[10px] uppercase tracking-[0.18em] text-slate-400">
+                      <span>{sourceMeta.label}</span>
+                      <span>{record.student.place}</span>
+                      <span>{record.student.phone}</span>
+                      <span>{formatShortDate(followUpMeta.nextFollowUpDate)}</span>
+                      <span>{studentFormLabel}</span>
                     </div>
                   </div>
-
-                  <div className="mt-2.5 flex flex-wrap gap-4 border-t border-slate-100 pt-2.5 text-[10px] uppercase tracking-[0.18em] text-slate-400">
-                    <span>{sourceMeta.label}</span>
-                    <span>{record.student.place}</span>
-                    <span>{record.student.phone}</span>
-                    <span>{formatShortDate(followUpMeta.nextFollowUpDate)}</span>
-                    <span>{studentFormLabel}</span>
-                  </div>
-                </>
+                </div>
               );
             })()}
           </section>
