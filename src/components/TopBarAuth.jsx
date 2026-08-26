@@ -26,7 +26,7 @@ const navItems = [
 ];
 
 const navButtonBaseClass =
-  "inline-flex h-9 min-w-0 items-center justify-center gap-2 rounded-full border px-3 text-center text-xs font-semibold tracking-[0.01em] transition-all duration-200 sm:px-3.5 sm:text-sm";
+  "inline-flex h-9 min-w-0 shrink-0 items-center justify-center gap-2 rounded-full border px-3 text-center text-xs font-semibold tracking-[0.01em] transition-all duration-200 sm:px-3.5 sm:text-sm";
 const navButtonIdleClass =
   "border-white/[0.08] bg-white/[0.05] text-white/85 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] hover:border-white/[0.08] hover:bg-[rgba(59,130,246,0.12)] hover:text-white hover:shadow-[0_8px_20px_rgba(15,23,42,0.16)]";
 const navButtonActiveClass =
@@ -58,7 +58,7 @@ export default function TopBarAuth() {
         </div>
 
         <div className="w-full min-w-0 xl:flex-1">
-          <div className="grid min-w-0 grid-cols-2 gap-2 lg:flex lg:flex-wrap lg:items-center xl:justify-end">
+          <div className="hide-scrollbar flex min-w-0 gap-2 overflow-x-auto pb-1 lg:flex-wrap lg:items-center lg:overflow-visible lg:pb-0 xl:justify-end">
             {navItems.map((item) => {
               const isActive = item.matches(location.pathname);
 
@@ -77,7 +77,7 @@ export default function TopBarAuth() {
 
             <button
               type="button"
-              className="inline-flex h-9 min-w-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-3 text-xs font-semibold text-white/80 transition hover:bg-white/[0.1] hover:text-white sm:px-4 sm:text-sm"
+              className="inline-flex h-9 min-w-0 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-3 text-xs font-semibold text-white/80 transition hover:bg-white/[0.1] hover:text-white sm:px-4 sm:text-sm"
               onClick={handleLogout}
             >
               <span className="truncate">Sign Out</span>

@@ -20,8 +20,8 @@ function ActionChip({ active, children, onClick }) {
       type="button"
       onClick={onClick}
       className={active
-        ? "rounded-full bg-[linear-gradient(135deg,#0b3558,#1d6fa5)] px-4 py-2 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(11,53,88,0.22)] transition duration-300 hover:-translate-y-0.5"
-        : "rounded-full border border-sky-100 bg-white/90 px-4 py-2 text-sm font-semibold text-slate-600 shadow-[0_8px_20px_rgba(148,163,184,0.12)] transition duration-300 hover:-translate-y-0.5 hover:border-sky-200 hover:bg-sky-50/80 hover:text-brand-500"}
+        ? "shrink-0 rounded-full bg-[linear-gradient(135deg,#0b3558,#1d6fa5)] px-4 py-2 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(11,53,88,0.22)] transition duration-300 hover:-translate-y-0.5"
+        : "shrink-0 rounded-full border border-sky-100 bg-white/90 px-4 py-2 text-sm font-semibold text-slate-600 shadow-[0_8px_20px_rgba(148,163,184,0.12)] transition duration-300 hover:-translate-y-0.5 hover:border-sky-200 hover:bg-sky-50/80 hover:text-brand-500"}
     >
       {children}
     </button>
@@ -131,10 +131,10 @@ function RecordListItem({ record, active, onSelect }) {
         </span>
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600">
-        <p>Batch: {normalizeBatchName(record.enrollment?.batch) || "N/A"}</p>
-        <p>Payment: {record.enrollment?.payment_status || "Pending"}</p>
-        <p>Follow-up: {formatDate(record.enrollment?.follow_up_date)}</p>
-        <p>Due: {payment.totalFee ? formatCurrency(payment.dueAmount) : "N/A"}</p>
+        <p className="truncate">Batch: {normalizeBatchName(record.enrollment?.batch) || "N/A"}</p>
+        <p className="truncate">Payment: {record.enrollment?.payment_status || "Pending"}</p>
+        <p className="truncate">Follow-up: {formatDate(record.enrollment?.follow_up_date)}</p>
+        <p className="truncate">Due: {payment.totalFee ? formatCurrency(payment.dueAmount) : "N/A"}</p>
       </div>
     </button>
   );
@@ -369,10 +369,10 @@ export default function AiCopilotPage() {
         </div>
       </div>
 
-      <section className="relative min-w-0 overflow-hidden rounded-[24px] bg-[radial-gradient(circle_at_top_left,rgba(125,211,252,0.26),transparent_28%),radial-gradient(circle_at_bottom_left,rgba(250,204,21,0.22),transparent_24%),radial-gradient(circle_at_top_right,rgba(147,197,253,0.2),transparent_26%),linear-gradient(180deg,#f8fbff_0%,#eef4fb_100%)] p-3 sm:rounded-[36px] md:p-5">
+      <section className="relative min-w-0 overflow-hidden rounded-[22px] bg-[radial-gradient(circle_at_top_left,rgba(125,211,252,0.26),transparent_28%),radial-gradient(circle_at_bottom_left,rgba(250,204,21,0.22),transparent_24%),radial-gradient(circle_at_top_right,rgba(147,197,253,0.2),transparent_26%),linear-gradient(180deg,#f8fbff_0%,#eef4fb_100%)] p-2 sm:rounded-[36px] sm:p-3 md:p-5">
         <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[linear-gradient(180deg,rgba(255,255,255,0.52),transparent)]" />
         <div className="grid min-w-0 gap-5 xl:grid-cols-[320px,minmax(0,1fr)]">
-          <aside className="panel border-white/70 bg-white/88 p-5 shadow-[0_24px_60px_rgba(148,163,184,0.18)] backdrop-blur-sm">
+          <aside className="panel min-w-0 border-white/70 bg-white/88 p-4 shadow-[0_24px_60px_rgba(148,163,184,0.18)] backdrop-blur-sm sm:p-5">
             <p className="section-kicker">Records</p>
             <h2 className="mt-1 bg-gradient-to-r from-sky-900 via-cyan-700 to-emerald-600 bg-clip-text text-lg font-semibold text-transparent">
               Current records
@@ -387,7 +387,7 @@ export default function AiCopilotPage() {
               />
             </div>
 
-            <div className="mt-4 max-h-[22rem] space-y-3 overflow-y-auto pr-1 xl:max-h-[68vh]">
+            <div className="hide-scrollbar mt-4 grid auto-cols-[minmax(15rem,82vw)] grid-flow-col gap-3 overflow-x-auto pr-1 xl:max-h-[68vh] xl:auto-cols-auto xl:grid-flow-row xl:overflow-y-auto xl:overflow-x-hidden">
               {filteredRecords.length ? (
                 filteredRecords.map((record) => (
                   <RecordListItem
@@ -406,16 +406,16 @@ export default function AiCopilotPage() {
           </aside>
 
           <div className="min-w-0 space-y-6">
-            <section className="panel border-white/75 bg-white/88 p-5 shadow-[0_26px_60px_rgba(148,163,184,0.16)] backdrop-blur-sm md:p-6">
+            <section className="panel min-w-0 border-white/75 bg-white/88 p-4 shadow-[0_26px_60px_rgba(148,163,184,0.16)] backdrop-blur-sm sm:p-5 md:p-6">
               <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                 <div className="min-w-0">
                   <p className="section-kicker">Selected record</p>
                   {selectedRecord ? (
                     <>
-                      <h2 className="mt-1 bg-gradient-to-r from-slate-950 via-sky-900 to-cyan-700 bg-clip-text text-2xl font-semibold text-transparent transition duration-500 hover:tracking-[0.01em]">
+                      <h2 className="mt-1 break-words bg-gradient-to-r from-slate-950 via-sky-900 to-cyan-700 bg-clip-text text-xl font-semibold text-transparent transition duration-500 hover:tracking-[0.01em] sm:text-2xl">
                         {selectedRecord.student?.full_name || "Unnamed student"}
                       </h2>
-                      <p className="mt-1 text-sm text-slate-600">
+                      <p className="mt-1 break-words text-sm text-slate-600">
                         {selectedRecord.course?.course_name || selectedRecord.enrollment?.course_name || "Course pending"} | {selectedRecord.currentStage || "Unknown"} | {normalizeBatchName(selectedRecord.enrollment?.batch) || "Batch pending"}
                       </p>
                       {selectedUrgency ? (
@@ -429,7 +429,7 @@ export default function AiCopilotPage() {
                   )}
                 </div>
 
-                <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   <DetailPill label="Payment" value={selectedRecord?.enrollment?.payment_status || "Pending"} />
                   <DetailPill label="Follow-up" value={formatDate(selectedRecord?.enrollment?.follow_up_date)} />
                   <DetailPill label="Due amount" value={selectedPayment?.totalFee ? formatCurrency(selectedPayment.dueAmount) : "N/A"} />
@@ -439,7 +439,7 @@ export default function AiCopilotPage() {
 
             <section className="space-y-6">
               <div className="panel min-w-0 border-white/75 bg-white/88 p-4 shadow-[0_26px_60px_rgba(148,163,184,0.16)] backdrop-blur-sm md:p-6">
-                <div className="flex flex-wrap gap-2.5">
+                <div className="hide-scrollbar flex gap-2.5 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0">
                   <ActionChip active={intent === "summary"} onClick={() => void handleGenerate("summary")}>Summary</ActionChip>
                   <ActionChip active={intent === "next_step"} onClick={() => void handleGenerate("next_step")}>Next step</ActionChip>
                   <ActionChip active={intent === "follow_up"} onClick={() => void handleGenerate("follow_up")}>Draft follow-up</ActionChip>
@@ -557,9 +557,9 @@ export default function AiCopilotPage() {
                         <div className="rounded-[18px] border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
                           {actionPlan.summary}
                         </div>
-                        <div className="flex flex-wrap gap-2">
+                        <div className="hide-scrollbar flex gap-2 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible md:pb-0">
                           {["Observe", "Reason", "Plan", "Act", "Log"].map((step, index) => (
-                            <span key={step} className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600">
+                            <span key={step} className="inline-flex shrink-0 items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600">
                               <span className="flex h-5 w-5 items-center justify-center rounded-full bg-brand-500 text-[10px] text-white">{index + 1}</span>
                               {step}
                             </span>
@@ -578,7 +578,7 @@ export default function AiCopilotPage() {
                                   </span>
                                   <div className="min-w-0">
                                     <div className="flex flex-wrap items-center gap-2">
-                                      <p className="text-sm font-semibold text-slate-950">{action.title}</p>
+                                      <p className="break-words text-sm font-semibold text-slate-950">{action.title}</p>
                                       <span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] ${urgencyBadgeClass(action.urgencyLevel)}`}>
                                         {action.urgencyLevel}
                                       </span>
