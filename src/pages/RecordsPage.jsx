@@ -175,6 +175,8 @@ export default function RecordsPage() {
       </div>
 
       <DataTable
+        mobileMode="scroll"
+        minTableWidth="min-w-[1180px]"
         columns={[
           { key: "student_code", label: "Student ID" },
           { key: "student_name", label: "Name" },

@@ -1,6 +1,59 @@
 import StatusBadge from "./StatusBadge";
 
-export default function DataTable({ columns, rows, onRowClick }) {
+export default function DataTable({ columns, rows, onRowClick, mobileMode = "cards", minTableWidth = "min-w-[860px]" }) {
+  const tableClassName = `${minTableWidth} border-separate border-spacing-0`;
+
+  if (mobileMode === "scroll") {
+    return (
+      <div className="panel overflow-hidden">
+        <div className="max-h-[72vh] overflow-x-auto overflow-y-auto">
+          <table className={tableClassName}>
+            <thead className="bg-white">
+              <tr>
+                {columns.map((column) => (
+                  <th
+                    key={column.key}
+                    className="sticky top-0 z-10 whitespace-nowrap border-b border-slate-200 bg-white/95 px-3 py-3 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500 backdrop-blur sm:px-4"
+                  >
+                    {column.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="bg-white">
+              {rows.map((row) => (
+                <tr
+                  key={row.id}
+                  className="cursor-pointer border-b border-slate-100 transition duration-200 hover:bg-brand-50/45"
+                  onClick={() => onRowClick?.(row)}
+                >
+                  {columns.map((column) => {
+                    const isActionColumn = column.key === "actions" || column.key === "action";
+
+                    return (
+                      <td
+                        key={column.key}
+                        className="max-w-[220px] whitespace-nowrap border-b border-slate-100 px-3 py-3 align-top text-[13px] font-medium text-slate-700 sm:px-4"
+                      >
+                        <div className={isActionColumn ? "min-w-[180px]" : "max-w-[220px] truncate"}>
+                          {column.render
+                            ? column.render(row[column.key], row)
+                            : column.badge
+                              ? <StatusBadge value={row[column.key]} />
+                              : row[column.key]}
+                        </div>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="panel overflow-hidden">
       <div className="divide-y divide-slate-100 lg:hidden">

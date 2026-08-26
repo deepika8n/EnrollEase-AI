@@ -147,6 +147,8 @@ export default function PaymentsPage() {
         </div>
 
         <DataTable
+          mobileMode="scroll"
+          minTableWidth="min-w-[1040px]"
           columns={[
             { key: "student", label: "Student" },
             { key: "course", label: "Course" },
@@ -200,6 +202,8 @@ export default function PaymentsPage() {
         </div>
 
         <DataTable
+          mobileMode="scroll"
+          minTableWidth="min-w-[1120px]"
           columns={[
             { key: "student", label: "Student" },
             { key: "course", label: "Course" },
