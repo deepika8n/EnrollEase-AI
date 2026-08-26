@@ -4,9 +4,9 @@
 
 EnrollEase AI is a student enquiry, enrollment, payment, document, and communication management system for institutes and training centers. It helps admins manage the full admission workflow from public enquiry to confirmed enrollment.
 
-The system supports public enquiry forms, student intake forms, course selection, payment tracking, EMI handling, discounts, PDF enrollment agreement generation, document preview, email communication, and AI-assisted admin support.
+The system supports public enquiry forms, student intake forms, course selection, payment tracking, EMI handling, discounts, PDF enrollment agreement generation, document preview, email communication, AI Copilot support, and an Admissions Action Agent.
 
-In simple words, EnrollEase AI reduces manual admission work and keeps all student details, payment details, documents, and follow-ups in one place.
+In simple words, EnrollEase AI reduces manual admission work and keeps all student details, payment details, documents, follow-ups, and AI-planned actions in one place.
 
 ## 2. Problem Statement
 
@@ -45,6 +45,7 @@ The proposed system is EnrollEase AI, a web-based admission management portal. I
 - Document upload and preview.
 - Dashboard for quick admission and payment overview.
 - AI Copilot support for admin assistance and student follow-up planning.
+- Admissions Action Agent for planning and executing admin-approved reactivation emails and payment reminders.
 - Hosted online using Vercel, so it can be accessed from anywhere.
 
 ## 5. Project Objectives
@@ -184,7 +185,11 @@ GitHub is used for storing code, tracking changes, and maintaining project versi
 8. Student profile displays all details, documents, timeline, payment summary, and notes.
 9. Admin can generate enrollment agreement PDF.
 10. Emails are sent for admission confirmation, payment update, reminders, and follow-ups.
-11. Dashboard and payment page show overall admission and collection status.
+11. AI Copilot can answer questions, summarize records, and draft follow-up messages.
+12. The Admissions Action Agent can prepare a priority action plan from current records.
+13. Admin-approved actions such as reactivation emails or payment reminders can be executed.
+14. Completed actions are shown in the agentic workflow.
+15. Dashboard and payment page show overall admission and collection status.
 
 ## 11. Important Modules
 
@@ -218,7 +223,11 @@ This module sends admission confirmation, payment received, payment cleared, EMI
 
 ### AI Copilot Module
 
-This module helps admins with summaries, next actions, and admission workflow support.
+This module helps admins with summaries, next actions, follow-up drafts, and admission workflow support.
+
+### Admissions Action Agent Module
+
+This module makes the project agentic. It observes current student records, reasons over payment status, dropout status, urgency, due amount, and follow-up date, then prepares priority actions. The admin can approve and execute actions such as reactivation emails and payment reminders. After an action is executed, the workflow shows it as completed.
 
 ## 12. Fee and Payment Workflow
 
@@ -252,8 +261,43 @@ If a student pays partially during enrollment, the system sends a payment receiv
 - Payment received email: Sent when partial payment is recorded.
 - Payment cleared email: Sent when full payment is completed.
 - EMI reminder email: Sent when EMI due date arrives.
+- Reactivation email: Sent to dropout students when the action agent prepares and the admin executes the reactivation action.
+- Payment reminder action: Sent to students who have pending or partial payment when the admin executes the planned action.
 
-## 14. Security Features
+## 14. Agentic AI Workflow
+
+The project is agentic because it does more than answer questions. It follows an Observe, Reason, Plan, Act, and Log workflow.
+
+- Observe: It reads current records such as enrolled students, dropout students, payment due amounts, and follow-up dates.
+- Reason: It checks priority using status, urgency, due amount, and follow-up timing.
+- Plan: It prepares actions like reactivation email or payment reminder.
+- Act: It performs the selected action only after the admin clicks the action button.
+- Log: It marks the action as completed and stores communication through the app email flow.
+
+The normal AI Copilot is mainly for asking questions and drafting answers. The Action Agent is for preparing and executing a workflow.
+
+## 15. API Key Usage
+
+The AI features can use API keys depending on configuration.
+
+- If `VITE_GEMINI_API_KEY` is configured, Gemini is used first for AI responses.
+- If `VITE_AI_API_KEY` is configured, the OpenAI-compatible chat completion endpoint is used.
+- If no AI key is configured, the app still gives local guided responses from available records.
+- Email sending uses Supabase Edge Functions and email provider secrets, not the AI key directly.
+
+So, the AI key is used for AI-generated answers and planning, while email execution uses the email backend.
+
+## 16. Deployment Details
+
+The project is deployed on Vercel and source code is maintained on GitHub.
+
+- Production URL: `https://enroll-ease-ai.vercel.app`
+- Repository: `deepika8n/EnrollEase-AI`
+- Build command: `npm run build`
+- Output folder: `dist`
+- Deployment workflow: changes are pushed to GitHub, and Vercel automatically deploys the updated production app.
+
+## 17. Security Features
 
 - Supabase authentication-ready structure.
 - Role-based profile table for admin, staff, and student roles.
@@ -261,8 +305,9 @@ If a student pays partially during enrollment, the system sends a payment receiv
 - Student intake uses token-based access.
 - Email and backend secrets are handled through environment variables.
 - Database records use UUID primary keys.
+- Agent actions require admin click approval before sending emails.
 
-## 15. Future Enhancements
+## 18. Future Enhancements
 
 - Add WhatsApp and SMS notifications.
 - Add online payment gateway integration.
@@ -276,11 +321,11 @@ If a student pays partially during enrollment, the system sends a payment receiv
 - Add multilingual support.
 - Add mobile app version.
 
-## 16. Conclusion
+## 19. Conclusion
 
-EnrollEase AI is a complete admission and enrollment management system that improves the traditional manual admission process. It centralizes enquiries, student records, payment tracking, documents, emails, and PDF generation. By using modern technologies like React, Supabase, PostgreSQL, Tailwind CSS, jsPDF, and Vercel, the project becomes fast, scalable, user-friendly, and suitable for real institute admission workflows.
+EnrollEase AI is a complete admission and enrollment management system that improves the traditional manual admission process. It centralizes enquiries, student records, payment tracking, documents, emails, PDF generation, AI Copilot support, and an agentic action workflow. By using modern technologies like React, Supabase, PostgreSQL, Tailwind CSS, jsPDF, GitHub, and Vercel, the project becomes fast, scalable, user-friendly, and suitable for real institute admission workflows.
 
-## 17. Viva Questions and Answers
+## 20. Viva Questions and Answers
 
 ### 1. What is the title of your project?
 
@@ -440,7 +485,7 @@ Row Level Security is a database security feature that controls which users can 
 
 ### 40. What is the role of AI in EnrollEase AI?
 
-AI Copilot supports admins by helping with summaries, next actions, follow-up planning, and student workflow assistance.
+AI supports admins through two features. The AI Copilot helps with summaries, next actions, and drafts. The Admissions Action Agent prepares priority workflow actions and can execute admin-approved emails such as reactivation emails and payment reminders.
 
 ### 41. What is the difference between enquiry and enrollment?
 
@@ -472,7 +517,7 @@ The current system can be improved with payment gateway integration, advanced ro
 
 ### 48. How is the project deployed?
 
-The project is deployed on Vercel and the source code is stored on GitHub.
+The project is deployed on Vercel at `https://enroll-ease-ai.vercel.app`, and the source code is stored on GitHub in the `deepika8n/EnrollEase-AI` repository.
 
 ### 49. What command is used to build the project?
 
@@ -480,4 +525,44 @@ The build command is `npm run build`.
 
 ### 50. What is the final conclusion of the project?
 
-EnrollEase AI successfully digitizes and simplifies the admission process. It provides a centralized, user-friendly, and scalable solution for enquiry handling, enrollment, payment tracking, document management, email automation, and PDF generation.
+EnrollEase AI successfully digitizes and simplifies the admission process. It provides a centralized, user-friendly, and scalable solution for enquiry handling, enrollment, payment tracking, document management, email automation, PDF generation, and agentic AI-assisted follow-up workflows.
+
+### 51. Why can your project be called Agentic AI?
+
+It can be called Agentic AI because it does not only answer questions. It observes records, reasons over student status, plans priority actions, executes admin-approved emails, and marks actions as completed.
+
+### 52. What is the difference between AI Copilot and Run Action Agent?
+
+AI Copilot is used to ask questions, summarize records, and draft responses. Run Action Agent scans all current records and prepares a workflow of actions such as reactivation emails and payment reminders.
+
+### 53. What happens when Run Action Agent is clicked?
+
+The system checks current records, identifies priority students, prepares planned actions, and displays them in the Admissions Action Agent workflow. It does not send emails immediately.
+
+### 54. What happens when Send Reactivation Email is clicked?
+
+The system sends a reactivation email to the dropout student through the app email flow. After sending, the action status changes to completed.
+
+### 55. Does the action agent send email automatically?
+
+No. The action agent prepares the plan first. The admin must click the action button before the email is sent.
+
+### 56. What kind of students are selected by the action agent?
+
+It selects students based on conditions like dropout status, pending payment, partial payment, overdue follow-up, due amount, and urgency level.
+
+### 57. Is an API key used in the AI feature?
+
+Yes, if configured. The app can use `VITE_GEMINI_API_KEY` or `VITE_AI_API_KEY` for AI-generated responses. If no AI key is configured, the app still provides local guided responses.
+
+### 58. Is the same API key used to send email?
+
+No. The AI key is for AI response generation. Email sending uses Supabase Edge Functions and email provider secrets such as Resend or SMTP settings.
+
+### 59. How is the project deployed?
+
+The project is hosted on Vercel at `https://enroll-ease-ai.vercel.app`. The source code is pushed to GitHub, and Vercel deploys the production app from the GitHub repository.
+
+### 60. What validation was done before deployment?
+
+The production build was tested using `npm run build`, local preview routes were checked, live Vercel routes were checked, and Git status was confirmed clean after committing and pushing.
