@@ -369,10 +369,11 @@ export default function AiCopilotPage() {
         </div>
       </div>
 
-      <section className="relative min-w-0 overflow-hidden rounded-[22px] bg-[radial-gradient(circle_at_top_left,rgba(125,211,252,0.26),transparent_28%),radial-gradient(circle_at_bottom_left,rgba(250,204,21,0.22),transparent_24%),radial-gradient(circle_at_top_right,rgba(147,197,253,0.2),transparent_26%),linear-gradient(180deg,#f8fbff_0%,#eef4fb_100%)] p-2 sm:rounded-[36px] sm:p-3 md:p-5">
+      <div className="hide-scrollbar -mx-1 overflow-x-auto px-1">
+      <section className="relative min-w-[1120px] overflow-hidden rounded-[36px] bg-[radial-gradient(circle_at_top_left,rgba(125,211,252,0.26),transparent_28%),radial-gradient(circle_at_bottom_left,rgba(250,204,21,0.22),transparent_24%),radial-gradient(circle_at_top_right,rgba(147,197,253,0.2),transparent_26%),linear-gradient(180deg,#f8fbff_0%,#eef4fb_100%)] p-5 xl:min-w-0">
         <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[linear-gradient(180deg,rgba(255,255,255,0.52),transparent)]" />
-        <div className="grid min-w-0 gap-5 xl:grid-cols-[320px,minmax(0,1fr)]">
-          <aside className="panel min-w-0 border-white/70 bg-white/88 p-4 shadow-[0_24px_60px_rgba(148,163,184,0.18)] backdrop-blur-sm sm:p-5">
+        <div className="grid min-w-0 grid-cols-[320px,minmax(0,1fr)] gap-5">
+          <aside className="panel min-w-0 border-white/70 bg-white/88 p-5 shadow-[0_24px_60px_rgba(148,163,184,0.18)] backdrop-blur-sm">
             <p className="section-kicker">Records</p>
             <h2 className="mt-1 bg-gradient-to-r from-sky-900 via-cyan-700 to-emerald-600 bg-clip-text text-lg font-semibold text-transparent">
               Current records
@@ -387,7 +388,7 @@ export default function AiCopilotPage() {
               />
             </div>
 
-            <div className="hide-scrollbar mt-4 grid auto-cols-[minmax(15rem,82vw)] grid-flow-col gap-3 overflow-x-auto pr-1 xl:max-h-[68vh] xl:auto-cols-auto xl:grid-flow-row xl:overflow-y-auto xl:overflow-x-hidden">
+            <div className="mt-4 max-h-[68vh] space-y-3 overflow-y-auto overflow-x-hidden pr-1">
               {filteredRecords.length ? (
                 filteredRecords.map((record) => (
                   <RecordListItem
@@ -406,13 +407,13 @@ export default function AiCopilotPage() {
           </aside>
 
           <div className="min-w-0 space-y-6">
-            <section className="panel min-w-0 border-white/75 bg-white/88 p-4 shadow-[0_26px_60px_rgba(148,163,184,0.16)] backdrop-blur-sm sm:p-5 md:p-6">
-              <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+            <section className="panel min-w-0 border-white/75 bg-white/88 p-6 shadow-[0_26px_60px_rgba(148,163,184,0.16)] backdrop-blur-sm">
+              <div className="flex gap-4 items-start justify-between">
                 <div className="min-w-0">
                   <p className="section-kicker">Selected record</p>
                   {selectedRecord ? (
                     <>
-                      <h2 className="mt-1 break-words bg-gradient-to-r from-slate-950 via-sky-900 to-cyan-700 bg-clip-text text-xl font-semibold text-transparent transition duration-500 hover:tracking-[0.01em] sm:text-2xl">
+                      <h2 className="mt-1 break-words bg-gradient-to-r from-slate-950 via-sky-900 to-cyan-700 bg-clip-text text-2xl font-semibold text-transparent transition duration-500 hover:tracking-[0.01em]">
                         {selectedRecord.student?.full_name || "Unnamed student"}
                       </h2>
                       <p className="mt-1 break-words text-sm text-slate-600">
@@ -429,7 +430,7 @@ export default function AiCopilotPage() {
                   )}
                 </div>
 
-                <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="grid min-w-0 grid-cols-3 gap-3">
                   <DetailPill label="Payment" value={selectedRecord?.enrollment?.payment_status || "Pending"} />
                   <DetailPill label="Follow-up" value={formatDate(selectedRecord?.enrollment?.follow_up_date)} />
                   <DetailPill label="Due amount" value={selectedPayment?.totalFee ? formatCurrency(selectedPayment.dueAmount) : "N/A"} />
@@ -438,8 +439,8 @@ export default function AiCopilotPage() {
             </section>
 
             <section className="space-y-6">
-              <div className="panel min-w-0 border-white/75 bg-white/88 p-4 shadow-[0_26px_60px_rgba(148,163,184,0.16)] backdrop-blur-sm md:p-6">
-                <div className="hide-scrollbar flex gap-2.5 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0">
+              <div className="panel min-w-0 border-white/75 bg-white/88 p-6 shadow-[0_26px_60px_rgba(148,163,184,0.16)] backdrop-blur-sm">
+                <div className="flex flex-wrap gap-2.5">
                   <ActionChip active={intent === "summary"} onClick={() => void handleGenerate("summary")}>Summary</ActionChip>
                   <ActionChip active={intent === "next_step"} onClick={() => void handleGenerate("next_step")}>Next step</ActionChip>
                   <ActionChip active={intent === "follow_up"} onClick={() => void handleGenerate("follow_up")}>Draft follow-up</ActionChip>
@@ -454,7 +455,7 @@ export default function AiCopilotPage() {
                   />
                 </div>
 
-                <div className="mt-4 grid gap-3 sm:flex sm:flex-wrap">
+                <div className="mt-4 flex flex-wrap gap-3">
                   <button type="button" className="button-primary" onClick={() => void handleGenerate(intent)} disabled={loading}>
                     {loading ? "Thinking..." : "Ask agent"}
                   </button>
@@ -491,7 +492,7 @@ export default function AiCopilotPage() {
                 </div>
 
                 {result.answer ? (
-                  <div className="mt-6 rounded-[20px] border border-sky-100/90 bg-[linear-gradient(145deg,rgba(239,249,255,0.98),rgba(247,250,255,0.96)_55%,rgba(238,242,255,0.98))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_16px_38px_rgba(125,211,252,0.14)] transition duration-300 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_22px_44px_rgba(96,165,250,0.18)] sm:rounded-[24px] sm:p-5">
+                  <div className="mt-6 rounded-[24px] border border-sky-100/90 bg-[linear-gradient(145deg,rgba(239,249,255,0.98),rgba(247,250,255,0.96)_55%,rgba(238,242,255,0.98))] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_16px_38px_rgba(125,211,252,0.14)] transition duration-300 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_22px_44px_rgba(96,165,250,0.18)]">
                     <p className="bg-gradient-to-r from-sky-700 via-cyan-600 to-indigo-600 bg-clip-text text-[11px] font-bold uppercase tracking-[0.24em] text-transparent">
                       Answer
                     </p>
@@ -514,7 +515,7 @@ export default function AiCopilotPage() {
                           className="group rounded-[20px] border border-slate-200 bg-[linear-gradient(145deg,#fbfdff,#f5f9fd_55%,#f5f3ff)] px-4 py-4 text-left shadow-[0_10px_24px_rgba(148,163,184,0.08)] transition duration-300 hover:-translate-y-1 hover:border-sky-200 hover:shadow-[0_18px_32px_rgba(96,165,250,0.14)]"
                           onClick={() => setSelectedRecordId(record.id)}
                         >
-                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex gap-2 items-center justify-between">
                             <div>
                               <p className="bg-gradient-to-r from-slate-950 via-sky-900 to-violet-700 bg-clip-text text-sm font-semibold text-transparent">
                                 {record.studentName}
@@ -527,7 +528,7 @@ export default function AiCopilotPage() {
                               {record.urgencyLevel}
                             </span>
                           </div>
-                          <div className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
+                          <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600">
                             <p>Payment: {record.paymentStatus}</p>
                             <p>Due: {record.dueAmount > 0 ? formatCurrency(record.dueAmount) : "No due amount"}</p>
                           </div>
@@ -539,8 +540,8 @@ export default function AiCopilotPage() {
               </div>
 
               <div className="space-y-6">
-                <div className="panel border-white/75 bg-white/88 p-5 shadow-[0_26px_60px_rgba(148,163,184,0.16)] backdrop-blur-sm md:p-6">
-                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div className="panel border-white/75 bg-white/88 p-6 shadow-[0_26px_60px_rgba(148,163,184,0.16)] backdrop-blur-sm">
+                  <div className="flex gap-3 items-start justify-between">
                     <div>
                       <p className="section-kicker">Agentic workflow</p>
                       <h3 className="mt-1 text-lg font-semibold text-slate-950">Admissions Action Agent</h3>
@@ -553,11 +554,11 @@ export default function AiCopilotPage() {
                   </div>
                   {actionPlan ? (
                     <div className="mt-4 space-y-4">
-                      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr),auto] md:items-center">
+                      <div className="grid gap-3 grid-cols-[minmax(0,1fr),auto] items-center">
                         <div className="rounded-[18px] border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
                           {actionPlan.summary}
                         </div>
-                        <div className="hide-scrollbar flex gap-2 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible md:pb-0">
+                        <div className="flex flex-wrap gap-2">
                           {["Observe", "Reason", "Plan", "Act", "Log"].map((step, index) => (
                             <span key={step} className="inline-flex shrink-0 items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600">
                               <span className="flex h-5 w-5 items-center justify-center rounded-full bg-brand-500 text-[10px] text-white">{index + 1}</span>
@@ -572,7 +573,7 @@ export default function AiCopilotPage() {
                             const completed = completedActionIds.includes(action.id);
                             return (
                               <div key={action.id} className="rounded-[18px] border border-sky-100 bg-[linear-gradient(145deg,#ffffff,#f7fbff_55%,#f0fdf4)] p-4 shadow-[0_12px_28px_rgba(148,163,184,0.1)]">
-                                <div className="grid gap-4 lg:grid-cols-[2rem,minmax(0,1fr),11rem] lg:items-center">
+                                <div className="grid grid-cols-[2rem,minmax(0,1fr),11rem] items-center gap-4">
                                   <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-900 text-sm font-bold text-white">
                                     {actionPlan.actions.findIndex((item) => item.id === action.id) + 1}
                                   </span>
@@ -614,7 +615,7 @@ export default function AiCopilotPage() {
                   )}
                 </div>
 
-                <div className="panel border-white/75 bg-white/88 p-5 shadow-[0_26px_60px_rgba(148,163,184,0.16)] backdrop-blur-sm md:p-6">
+                <div className="panel border-white/75 bg-white/88 p-6 shadow-[0_26px_60px_rgba(148,163,184,0.16)] backdrop-blur-sm">
                   <p className="section-kicker">Agent notes</p>
                   <div className="mt-4 space-y-3">
                     {result.suggestions.length ? (
@@ -635,6 +636,7 @@ export default function AiCopilotPage() {
           </div>
         </div>
       </section>
+      </div>
     </AppShell>
   );
 }
