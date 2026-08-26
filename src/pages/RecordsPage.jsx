@@ -129,48 +129,52 @@ export default function RecordsPage() {
         ]}
       />
 
-      <div className="panel mb-6 p-4 sm:p-6">
-        <div className="mb-5">
-          <p className="section-kicker">Filters</p>
-        </div>
-        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-5">
-          <input
-            placeholder="Search code, name or phone"
-            value={filters.query}
-            onChange={(event) => setFilters((prev) => ({ ...prev, query: event.target.value }))}
-          />
-          <select value={filters.course} onChange={(event) => setFilters((prev) => ({ ...prev, course: event.target.value }))}>
-            <option value="">All courses</option>
-            {courseOptions.map((course) => (
-              <option key={course} value={course}>
-                {course}
-              </option>
-            ))}
-          </select>
-          <select value={filters.batch} onChange={(event) => setFilters((prev) => ({ ...prev, batch: event.target.value }))}>
-            <option value="">All batches</option>
-            {batchOptions.map((batch) => (
-              <option key={batch} value={batch}>
-                {batch}
-              </option>
-            ))}
-          </select>
-          <select value={filters.plan} onChange={(event) => setFilters((prev) => ({ ...prev, plan: event.target.value }))}>
-            <option value="">All plans</option>
-            {planOptions.map((plan) => (
-              <option key={plan} value={plan}>
-                {plan}
-              </option>
-            ))}
-          </select>
-          <select value={filters.payment} onChange={(event) => setFilters((prev) => ({ ...prev, payment: event.target.value }))}>
-            <option value="">All payment status</option>
-            {["Paid", "Partial", "Pending", "Overdue"].map((status) => (
-              <option key={status} value={status}>
-                {status}
-              </option>
-            ))}
-          </select>
+      <div className="panel mb-6 overflow-hidden p-0">
+        <div className="hide-scrollbar overflow-x-auto">
+          <div className="min-w-[980px] p-6 xl:min-w-0">
+            <div className="mb-5">
+              <p className="section-kicker">Filters</p>
+            </div>
+            <div className="grid grid-cols-5 gap-4">
+              <input
+                placeholder="Search code, name or phone"
+                value={filters.query}
+                onChange={(event) => setFilters((prev) => ({ ...prev, query: event.target.value }))}
+              />
+              <select value={filters.course} onChange={(event) => setFilters((prev) => ({ ...prev, course: event.target.value }))}>
+                <option value="">All courses</option>
+                {courseOptions.map((course) => (
+                  <option key={course} value={course}>
+                    {course}
+                  </option>
+                ))}
+              </select>
+              <select value={filters.batch} onChange={(event) => setFilters((prev) => ({ ...prev, batch: event.target.value }))}>
+                <option value="">All batches</option>
+                {batchOptions.map((batch) => (
+                  <option key={batch} value={batch}>
+                    {batch}
+                  </option>
+                ))}
+              </select>
+              <select value={filters.plan} onChange={(event) => setFilters((prev) => ({ ...prev, plan: event.target.value }))}>
+                <option value="">All plans</option>
+                {planOptions.map((plan) => (
+                  <option key={plan} value={plan}>
+                    {plan}
+                  </option>
+                ))}
+              </select>
+              <select value={filters.payment} onChange={(event) => setFilters((prev) => ({ ...prev, payment: event.target.value }))}>
+                <option value="">All payment status</option>
+                {["Paid", "Partial", "Pending", "Overdue"].map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
         </div>
       </div>
 

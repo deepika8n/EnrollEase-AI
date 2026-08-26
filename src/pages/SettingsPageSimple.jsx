@@ -31,34 +31,36 @@ export default function SettingsPageSimple() {
         description="Maintain administrator credentials without changing authentication behavior."
       />
 
-      <section className="panel max-w-3xl p-4 sm:p-6">
-        <h2 className="section-title">Reset Password</h2>
-        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-          <input
-            type="email"
-            value={form.email}
-            onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))}
-            placeholder="Admin email"
-            required
-          />
-          <input
-            type="password"
-            value={form.currentPassword}
-            onChange={(event) => setForm((prev) => ({ ...prev, currentPassword: event.target.value }))}
-            placeholder="Current password"
-          />
-          <input
-            type="password"
-            value={form.newPassword}
-            onChange={(event) => setForm((prev) => ({ ...prev, newPassword: event.target.value }))}
-            placeholder="New password"
-            required
-          />
-          <button type="submit" className="button-primary" disabled={saving}>
-            {saving ? "Updating..." : "Update Password"}
-          </button>
-        </form>
-      </section>
+      <div className="hide-scrollbar -mx-1 overflow-x-auto px-1">
+        <section className="panel min-w-[768px] max-w-3xl p-6">
+          <h2 className="section-title">Reset Password</h2>
+          <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+            <input
+              type="email"
+              value={form.email}
+              onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))}
+              placeholder="Admin email"
+              required
+            />
+            <input
+              type="password"
+              value={form.currentPassword}
+              onChange={(event) => setForm((prev) => ({ ...prev, currentPassword: event.target.value }))}
+              placeholder="Current password"
+            />
+            <input
+              type="password"
+              value={form.newPassword}
+              onChange={(event) => setForm((prev) => ({ ...prev, newPassword: event.target.value }))}
+              placeholder="New password"
+              required
+            />
+            <button type="submit" className="button-primary" disabled={saving}>
+              {saving ? "Updating..." : "Update Password"}
+            </button>
+          </form>
+        </section>
+      </div>
     </AppShell>
   );
 }

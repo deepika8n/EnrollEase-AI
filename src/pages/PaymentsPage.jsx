@@ -93,51 +93,55 @@ export default function PaymentsPage() {
         title="Collections overview"
       />
 
-      <section className="panel p-4">
-        <div className="grid gap-3 sm:flex sm:flex-wrap">
-          {[
-            { key: "all", label: "All Payments" },
-            { key: "one_time", label: "One-Time" },
-            { key: "emi", label: "EMI" },
-          ].map((option) => (
-            <button
-              key={option.key}
-              type="button"
-              className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                paymentFilter === option.key
-                  ? "border-brand-500 bg-brand-500 text-white"
-                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-              }`}
-              onClick={() => setPaymentFilter(option.key)}
-            >
-              {option.label}
-            </button>
-          ))}
+      <section className="panel overflow-hidden p-0">
+        <div className="hide-scrollbar overflow-x-auto">
+          <div className="flex min-w-[480px] flex-wrap gap-3 p-4 sm:min-w-0">
+            {[
+              { key: "all", label: "All Payments" },
+              { key: "one_time", label: "One-Time" },
+              { key: "emi", label: "EMI" },
+            ].map((option) => (
+              <button
+                key={option.key}
+                type="button"
+                className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                  paymentFilter === option.key
+                    ? "border-brand-500 bg-brand-500 text-white"
+                    : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                }`}
+                onClick={() => setPaymentFilter(option.key)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
         </div>
       </section>
 
-      <section className="grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <PaymentOverviewCard
-          label="Total Revenue"
-          value={formatCurrency(totals.collected)}
-          note="Amount already collected across all enrolled students."
-        />
-        <PaymentOverviewCard
-          label="Outstanding Balance"
-          value={formatCurrency(Math.max(totals.expected - totals.collected, 0))}
-          note="Balance still pending across active admissions."
-        />
-        <PaymentOverviewCard
-          label="Pending Payments"
-          value={formatNumber(totals.pending)}
-          note="Students who still have an open payment balance."
-        />
-        <PaymentOverviewCard
-          label="Collection Rate"
-          value={formatPercent(totals.collectionRate)}
-          note="Overall fee realization against expected revenue."
-        />
-      </section>
+      <div className="hide-scrollbar -mx-1 overflow-x-auto px-1">
+        <section className="grid min-w-[980px] grid-cols-4 gap-4 lg:min-w-0">
+          <PaymentOverviewCard
+            label="Total Revenue"
+            value={formatCurrency(totals.collected)}
+            note="Amount already collected across all enrolled students."
+          />
+          <PaymentOverviewCard
+            label="Outstanding Balance"
+            value={formatCurrency(Math.max(totals.expected - totals.collected, 0))}
+            note="Balance still pending across active admissions."
+          />
+          <PaymentOverviewCard
+            label="Pending Payments"
+            value={formatNumber(totals.pending)}
+            note="Students who still have an open payment balance."
+          />
+          <PaymentOverviewCard
+            label="Collection Rate"
+            value={formatPercent(totals.collectionRate)}
+            note="Overall fee realization against expected revenue."
+          />
+        </section>
+      </div>
 
       {showOneTimeSection ? (
       <section className="panel p-4 sm:p-6">
