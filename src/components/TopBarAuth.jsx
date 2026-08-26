@@ -26,7 +26,7 @@ const navItems = [
 ];
 
 const navButtonBaseClass =
-  "inline-flex h-9 items-center gap-2 rounded-full border px-3.5 text-sm font-semibold tracking-[0.01em] transition-all duration-200";
+  "inline-flex h-9 min-w-0 items-center justify-center gap-2 rounded-full border px-3 text-center text-xs font-semibold tracking-[0.01em] transition-all duration-200 sm:px-3.5 sm:text-sm";
 const navButtonIdleClass =
   "border-white/[0.08] bg-white/[0.05] text-white/85 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] hover:border-white/[0.08] hover:bg-[rgba(59,130,246,0.12)] hover:text-white hover:shadow-[0_8px_20px_rgba(15,23,42,0.16)]";
 const navButtonActiveClass =
@@ -44,21 +44,21 @@ export default function TopBarAuth() {
 
   return (
     <div className="sticky top-0 z-40 w-full border-b border-white/10 bg-[rgba(6,18,34,0.88)] shadow-[0_18px_50px_rgba(2,12,27,0.28)] backdrop-blur-2xl">
-      <div className="mx-auto flex w-full max-w-screen-2xl flex-col gap-3 px-4 py-3 sm:px-6 lg:px-8 xl:flex-row xl:items-center xl:justify-between">
+      <div className="mx-auto flex w-full max-w-screen-2xl flex-col gap-3 px-3 py-3 sm:px-6 lg:px-8 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex min-w-0 items-center gap-3">
-          <BrandLogo variant="shield" size="md" iconClassName="h-12 w-12 rounded-[18px] shadow-[0_14px_30px_rgba(0,0,0,0.2)] sm:h-14 sm:w-14 sm:rounded-[22px]" />
+          <BrandLogo variant="shield" size="md" iconClassName="h-10 w-10 rounded-[16px] shadow-[0_14px_30px_rgba(0,0,0,0.2)] sm:h-14 sm:w-14 sm:rounded-[22px]" />
           <div className="min-w-0">
-            <p className="truncate font-display text-lg font-semibold tracking-[-0.04em] text-white sm:text-xl">
+            <p className="truncate font-display text-base font-semibold tracking-[-0.02em] text-white sm:text-xl">
               EnrollEase
             </p>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-white/60 sm:text-[11px] sm:tracking-[0.24em]">
+            <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-white/60 sm:text-[11px] sm:tracking-[0.24em]">
               Certisured Admissions
             </p>
           </div>
         </div>
 
-        <div className="-mx-4 overflow-x-auto px-4 pb-1 hide-scrollbar sm:mx-0 sm:px-0 sm:pb-0 xl:flex-1">
-          <div className="flex min-w-max items-center gap-2 xl:flex-wrap xl:justify-end">
+        <div className="w-full min-w-0 xl:flex-1">
+          <div className="grid min-w-0 grid-cols-2 gap-2 lg:flex lg:flex-wrap lg:items-center xl:justify-end">
             {navItems.map((item) => {
               const isActive = item.matches(location.pathname);
 
@@ -66,21 +66,21 @@ export default function TopBarAuth() {
                 <Link
                   key={item.to}
                   to={item.to}
-                  className={`${navButtonBaseClass} whitespace-nowrap text-[13px] sm:text-sm ${isActive ? navButtonActiveClass : navButtonIdleClass}`}
+                  className={`${navButtonBaseClass} ${isActive ? navButtonActiveClass : navButtonIdleClass}`}
                   aria-label={item.label}
                 >
                   {item.icon || null}
-                  {item.label}
+                  <span className="truncate">{item.label}</span>
                 </Link>
               );
             })}
 
             <button
               type="button"
-              className="inline-flex h-9 items-center justify-center whitespace-nowrap rounded-full border border-white/10 bg-white/[0.04] px-4 text-[13px] font-semibold text-white/80 transition hover:bg-white/[0.1] hover:text-white sm:text-sm"
+              className="inline-flex h-9 min-w-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-3 text-xs font-semibold text-white/80 transition hover:bg-white/[0.1] hover:text-white sm:px-4 sm:text-sm"
               onClick={handleLogout}
             >
-              Sign Out
+              <span className="truncate">Sign Out</span>
             </button>
           </div>
         </div>

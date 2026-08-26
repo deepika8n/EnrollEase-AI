@@ -481,4 +481,3 @@ The build command is `npm run build`.
 ### 50. What is the final conclusion of the project?
 
 EnrollEase AI successfully digitizes and simplifies the admission process. It provides a centralized, user-friendly, and scalable solution for enquiry handling, enrollment, payment tracking, document management, email automation, and PDF generation.
-

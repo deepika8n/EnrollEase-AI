@@ -10,9 +10,9 @@ import { isEmiEnrollment, isOneTimeEnrollment } from "../utils/paymentHelpers";
 
 function PaymentOverviewCard({ label, value, note }) {
   return (
-    <article className="panel overflow-hidden p-5">
+    <article className="panel min-w-0 overflow-hidden p-4 sm:p-5">
       <p className="surface-label">{label}</p>
-      <p className="mt-4 font-display text-3xl font-semibold tracking-[-0.04em] text-slate-950">{value}</p>
+      <p className="mt-4 break-words font-display text-2xl font-semibold tracking-[-0.02em] text-slate-950 sm:text-3xl sm:tracking-[-0.04em]">{value}</p>
       <p className="mt-2 text-sm text-slate-600">{note}</p>
     </article>
   );
@@ -94,7 +94,7 @@ export default function PaymentsPage() {
       />
 
       <section className="panel p-4">
-        <div className="flex flex-wrap gap-3">
+        <div className="grid gap-3 sm:flex sm:flex-wrap">
           {[
             { key: "all", label: "All Payments" },
             { key: "one_time", label: "One-Time" },
@@ -116,7 +116,7 @@ export default function PaymentsPage() {
         </div>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-4">
+      <section className="grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <PaymentOverviewCard
           label="Total Revenue"
           value={formatCurrency(totals.collected)}
@@ -140,7 +140,7 @@ export default function PaymentsPage() {
       </section>
 
       {showOneTimeSection ? (
-      <section className="panel p-6">
+      <section className="panel p-4 sm:p-6">
         <div className="mb-5">
           <p className="section-kicker">One-Time Payments</p>
           <h2 className="section-title">Single-payment students</h2>
@@ -160,7 +160,7 @@ export default function PaymentsPage() {
               key: "actions",
               label: "Actions",
               render: (_, row) => (
-                <div className="flex flex-wrap gap-2">
+                <div className="grid gap-2 sm:flex sm:flex-wrap">
                   <button
                     type="button"
                     className="button-secondary px-3 py-2 text-xs"
@@ -193,7 +193,7 @@ export default function PaymentsPage() {
       ) : null}
 
       {showEmiSection ? (
-      <section className="panel p-6">
+      <section className="panel p-4 sm:p-6">
         <div className="mb-5">
           <p className="section-kicker">EMI Payments</p>
           <h2 className="section-title">Installment tracker</h2>
@@ -218,7 +218,7 @@ export default function PaymentsPage() {
               key: "actions",
               label: "Action",
               render: (_, row) => (
-                <div className="flex flex-wrap gap-2">
+                <div className="grid gap-2 sm:flex sm:flex-wrap">
                   <button
                     type="button"
                     className="button-secondary px-3 py-2 text-xs"

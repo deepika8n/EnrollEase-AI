@@ -3,7 +3,7 @@ export default function PageHeader({ eyebrow, title, description, actions }) {
     <div className="flex flex-col gap-4 sm:gap-5 xl:flex-row xl:items-end xl:justify-between">
       <div>
         {eyebrow ? <p className="section-kicker">{eyebrow}</p> : null}
-        <h1 className="mt-2.5 font-display text-[2.1rem] font-semibold leading-[0.96] tracking-[-0.05em] text-slate-950 sm:mt-3 sm:text-4xl md:text-[2.6rem]">
+        <h1 className="mt-2.5 max-w-full font-display text-[1.85rem] font-semibold leading-tight tracking-[-0.02em] text-slate-950 sm:mt-3 sm:text-4xl md:text-[2.6rem] md:leading-[0.98]">
           {title}
         </h1>
         {description ? <p className="mt-2.5 max-w-3xl text-sm leading-6 text-slate-600 sm:mt-3 sm:leading-7 md:text-base">{description}</p> : null}

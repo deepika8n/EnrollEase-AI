@@ -129,11 +129,11 @@ export default function RecordsPage() {
         ]}
       />
 
-      <div className="panel mb-6 p-6">
+      <div className="panel mb-6 p-4 sm:p-6">
         <div className="mb-5">
           <p className="section-kicker">Filters</p>
         </div>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-5">
           <input
             placeholder="Search code, name or phone"
             value={filters.query}
@@ -195,7 +195,7 @@ export default function RecordsPage() {
             key: "actions",
             label: "Actions",
             render: (_, row) => (
-              <div className="flex flex-wrap gap-2">
+              <div className="grid gap-2 sm:flex sm:flex-wrap">
                 <button
                   type="button"
                   className="button-secondary px-3 py-2 text-xs"

@@ -8,7 +8,7 @@ export default function AppShell({ children }) {
       <div className="hero-orb bottom-[-10rem] left-[35%] h-80 w-80 bg-gold-100/65" />
       <TopBarAuth />
 
-      <main className="mx-auto w-full max-w-screen-2xl px-4 py-6 sm:px-6 lg:px-8">
+      <main className="mx-auto w-full max-w-screen-2xl px-3 py-5 sm:px-6 sm:py-6 lg:px-8">
         <div className="min-w-0 space-y-6 fade-in-up">{children}</div>
       </main>
     </div>

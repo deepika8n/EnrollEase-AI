@@ -38,22 +38,22 @@ export default class AppErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-canvas px-6">
+        <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-canvas px-3 sm:px-6">
           <div className="hero-orb left-[-5rem] top-10 h-56 w-56 bg-brand-100/70" />
           <div className="hero-orb bottom-[-6rem] right-[-3rem] h-72 w-72 bg-accent-100/70" />
-          <div className="panel relative w-full max-w-2xl px-8 py-10 text-center">
+          <div className="panel relative w-full max-w-2xl px-5 py-8 text-center sm:px-8 sm:py-10">
             <p className="section-kicker">Runtime issue</p>
-            <h1 className="mt-3 font-display text-4xl font-semibold tracking-[-0.05em] text-slate-950">
+            <h1 className="mt-3 font-display text-3xl font-semibold tracking-[-0.02em] text-slate-950 sm:text-4xl sm:tracking-[-0.05em]">
               EnrollEase hit an unexpected error
             </h1>
             <p className="mt-4 text-sm text-slate-600">
               The page did not load correctly. Refresh once to retry. If this keeps happening, the latest error is now
               captured in the browser for debugging.
             </p>
-            <p className="mt-4 rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+            <p className="mt-4 break-words rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
               {this.state.errorMessage}
             </p>
-            <div className="mt-6 flex justify-center">
+            <div className="mt-6 grid sm:flex sm:justify-center">
               <button type="button" className="button-primary" onClick={this.handleReload}>
                 Reload page
               </button>

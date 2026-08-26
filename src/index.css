@@ -292,19 +292,19 @@
   }
 
   .button-primary {
-    @apply inline-flex items-center justify-center rounded-2xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_36px_rgba(11,53,88,0.22)] hover:-translate-y-0.5 hover:bg-accent-600 hover:shadow-[0_18px_38px_rgba(30,207,107,0.22)] focus:outline-none focus:ring-4 focus:ring-accent-100;
+    @apply inline-flex w-full items-center justify-center rounded-2xl bg-brand-500 px-5 py-3 text-center text-sm font-semibold text-white shadow-[0_16px_36px_rgba(11,53,88,0.22)] hover:-translate-y-0.5 hover:bg-accent-600 hover:shadow-[0_18px_38px_rgba(30,207,107,0.22)] focus:outline-none focus:ring-4 focus:ring-accent-100 sm:w-auto;
   }
 
   .button-secondary {
-    @apply inline-flex items-center justify-center rounded-2xl border border-brand-200 bg-white px-5 py-3 text-sm font-semibold text-brand-500 shadow-[0_10px_24px_rgba(7,30,52,0.05)] hover:-translate-y-0.5 hover:border-accent-500 hover:text-brand-600 hover:shadow-[0_12px_28px_rgba(7,30,52,0.08)] focus:outline-none focus:ring-4 focus:ring-brand-100;
+    @apply inline-flex w-full items-center justify-center rounded-2xl border border-brand-200 bg-white px-5 py-3 text-center text-sm font-semibold text-brand-500 shadow-[0_10px_24px_rgba(7,30,52,0.05)] hover:-translate-y-0.5 hover:border-accent-500 hover:text-brand-600 hover:shadow-[0_12px_28px_rgba(7,30,52,0.08)] focus:outline-none focus:ring-4 focus:ring-brand-100 sm:w-auto;
   }
 
   .button-ghost {
-    @apply inline-flex items-center justify-center rounded-2xl border border-transparent bg-brand-50 px-4 py-2.5 text-sm font-semibold text-brand-500 hover:bg-accent-50 hover:text-brand-600;
+    @apply inline-flex w-full items-center justify-center rounded-2xl border border-transparent bg-brand-50 px-4 py-2.5 text-center text-sm font-semibold text-brand-500 hover:bg-accent-50 hover:text-brand-600 sm:w-auto;
   }
 
   .section-title {
-    @apply font-display text-[1.75rem] font-semibold tracking-[-0.03em] text-slate-950;
+    @apply font-display text-2xl font-semibold tracking-[-0.02em] text-slate-950 sm:text-[1.75rem] sm:tracking-[-0.03em];
   }
 
   .section-kicker {

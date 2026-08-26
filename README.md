@@ -17,6 +17,7 @@ Educational organizations often manage admissions across forms, spreadsheets, ph
 - Native Supabase email and automation flow for enquiry, follow-up, and enrollment communication
 - Optional Supabase server-side automation dispatcher for unattended follow-up and payment reminder runs
 - Admissions Copilot workspace for AI-guided summaries, next steps, follow-up drafts, and priority review
+- Admissions Action Agent that observes records, reasons over priority, plans next actions, executes approved follow-up/payment/reactivation emails through app tools, and logs the result
 - Sample data for courses, enrollments, documents, and email logs
 
 ## Tech Stack
@@ -28,7 +29,20 @@ Educational organizations often manage admissions across forms, spreadsheets, ph
 - Storage: Supabase Storage ready helpers
 - PDF Generation: jsPDF
 - Automation: Supabase Edge Functions + scheduled dispatch
+- Agentic AI: goal-driven admissions action planner with human-approved tool execution
 - Hosting: Vercel compatible
+
+## Agentic AI Behavior
+
+EnrollEase AI now includes an admissions action agent inside the AI Agent page. The agent follows a simple agentic loop:
+
+1. Observes current enrollment, payment, follow-up, and dropout records.
+2. Reasons over urgency, payment due amount, status, and follow-up dates.
+3. Plans the next best action for priority students.
+4. Uses existing app tools to send payment reminders, admission follow-ups, or reactivation emails after admin approval.
+5. Logs completed actions through the app email and automation flow.
+
+The document upload process is intentionally not part of this agent because Aadhaar and student photo uploads are already required during enrollment completion.
 
 ## Project Structure
 

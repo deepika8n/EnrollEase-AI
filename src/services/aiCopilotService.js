@@ -837,6 +837,157 @@ export function getWhatsAppDrafts(record) {
   ];
 }
 
+function isFollowUpDue(record) {
+  const followUpDate = normalizeText(record?.enrollment?.follow_up_date);
+  if (!followUpDate) return false;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dueDate = new Date(`${followUpDate}T00:00:00`);
+  return !Number.isNaN(dueDate.getTime()) && dueDate <= today;
+}
+
+function buildActionMessage(record, actionType) {
+  const studentName = getRecordLabel(record);
+  const courseName = normalizeText(record?.course?.course_name || record?.enrollment?.course_name) || "your selected course";
+  const payment = getPaymentSummary(record);
+
+  if (actionType === "payment_reminder") {
+    return [
+      `Subject: Payment Reminder - CERTISURED`,
+      "",
+      `Dear ${studentName},`,
+      "",
+      `This is a reminder from CERTISURED regarding the pending payment for ${courseName}.`,
+      `Pending amount: ${formatCurrency(payment.dueAmount)}.`,
+      normalizeText(record?.enrollment?.next_due_date) ? `Due date: ${formatDate(record.enrollment.next_due_date)}.` : "",
+      "Please complete the payment or reply to this email if you need any support.",
+      "",
+      "Regards,",
+      "CERTISURED Admissions Team",
+    ].filter(Boolean).join("\n");
+  }
+
+  if (actionType === "dropout_reactivation") {
+    return [
+      `Subject: Admission Reactivation Support - CERTISURED`,
+      "",
+      `Dear ${studentName},`,
+      "",
+      `We noticed that your admission journey for ${courseName} was marked as dropout.`,
+      "If you are still interested, our admissions team can help you restart the process or choose a better batch.",
+      "Please reply to this email and we will guide you with the next step.",
+      "",
+      "Regards,",
+      "CERTISURED Admissions Team",
+    ].join("\n");
+  }
+
+  return buildFollowUpMessage(record);
+}
+
+function createAgentAction(record, actionType, index) {
+  const payment = getPaymentSummary(record);
+  const studentName = getRecordLabel(record);
+  const courseName = normalizeText(record?.course?.course_name || record?.enrollment?.course_name) || "Course pending";
+  const stage = normalizeText(record?.currentStage) || "Unknown";
+  const followUpDate = normalizeText(record?.enrollment?.follow_up_date);
+  const dueAmount = payment.dueAmount;
+  const isPaymentAction = actionType === "payment_reminder";
+  const isDropoutAction = actionType === "dropout_reactivation";
+
+  const titles = {
+    payment_reminder: `Send payment reminder to ${studentName}`,
+    admission_follow_up: `Send admission follow-up to ${studentName}`,
+    dropout_reactivation: `Prepare reactivation email for ${studentName}`,
+  };
+  const toolNames = {
+    payment_reminder: "sendPaymentEmail",
+    admission_follow_up: "sendDashboardFollowUpEmail",
+    dropout_reactivation: "logEmail",
+  };
+  const commandLabels = {
+    payment_reminder: "Execute payment reminder",
+    admission_follow_up: "Execute follow-up",
+    dropout_reactivation: "Send reactivation email",
+  };
+
+  const reason = isPaymentAction
+    ? `${studentName} has ${formatCurrency(dueAmount)} pending for ${courseName}.`
+    : isDropoutAction
+      ? `${studentName} is marked dropout, so the agent prepared a reactivation attempt.`
+      : followUpDate
+        ? `${studentName} has a follow-up date of ${formatDate(followUpDate)}.`
+        : `${studentName} is still in enquiry stage and needs admission follow-up.`;
+
+  return {
+    id: `${record.id}-${actionType}-${index}`,
+    recordId: record.id,
+    enrollmentId: record?.enrollment?.id || "",
+    studentName,
+    courseName,
+    stage,
+    actionType,
+    title: titles[actionType] || `Review ${studentName}`,
+    reason,
+    toolName: toolNames[actionType] || "manual_review",
+    commandLabel: commandLabels[actionType] || "Review action",
+    urgencyLevel: getUrgencyLevel(record),
+    priorityScore: getPriorityScore(record) + (isFollowUpDue(record) ? 14 : 0) + (dueAmount > 0 ? 10 : 0),
+    dueAmount,
+    draft: buildActionMessage(record, actionType),
+  };
+}
+
+export function buildAdmissionsActionPlan(portalRecords = []) {
+  const cleanedRecords = buildCopilotRecordSet(portalRecords);
+  const actions = [];
+
+  cleanedRecords.forEach((record) => {
+    const stage = normalizeKey(record?.currentStage);
+    const paymentStatus = normalizeKey(record?.enrollment?.payment_status || "");
+    const payment = getPaymentSummary(record);
+    const isActivePaymentRecord = Boolean(record?.paymentEligible) && stage === "enrolled";
+
+    if (
+      isActivePaymentRecord
+      && payment.dueAmount > 0
+      && ["pending", "partial", "overdue"].includes(paymentStatus)
+    ) {
+      actions.push(createAgentAction(record, "payment_reminder", actions.length + 1));
+      return;
+    }
+
+    if (stage === "enquiry" && (isFollowUpDue(record) || getPriorityScore(record) >= 18)) {
+      actions.push(createAgentAction(record, "admission_follow_up", actions.length + 1));
+      return;
+    }
+
+    if (stage === "dropout") {
+      actions.push(createAgentAction(record, "dropout_reactivation", actions.length + 1));
+    }
+  });
+
+  const sortedActions = actions
+    .sort((left, right) => right.priorityScore - left.priorityScore)
+    .slice(0, 8);
+
+  return {
+    goal: "Autonomously identify high-value admissions work and prepare executable actions for the admin.",
+    cycle: [
+      "Observe current enrollment, payment, dropout, and follow-up records.",
+      "Reason over urgency, due amount, status, and follow-up dates.",
+      "Plan the next best action for each priority student.",
+      "Use existing app tools to send emails or reminders after admin approval.",
+      "Log completed actions through the app email and automation flow.",
+    ],
+    actions: sortedActions,
+    summary: sortedActions.length
+      ? `Agent prepared ${sortedActions.length} priority action${sortedActions.length === 1 ? "" : "s"} from ${cleanedRecords.length} current record${cleanedRecords.length === 1 ? "" : "s"}.`
+      : `Agent found no urgent follow-up or payment actions across ${cleanedRecords.length} current record${cleanedRecords.length === 1 ? "" : "s"}.`,
+  };
+}
+
 export async function generateAdmissionsCopilotResponse({
   intent,
   query,

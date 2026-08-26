@@ -59,7 +59,7 @@ const SUPABASE_LOGIN_RECOVERY_TIMEOUT_MS = 45000;
 const SUPABASE_SESSION_ACTIVATION_TIMEOUT_MS = 8000;
 const SUPABASE_LOGIN_POLL_INTERVAL_MS = 1500;
 const AUTOMATION_RECHECK_INTERVAL_MS = 60 * 1000;
-const CRITICAL_REMOTE_TIMEOUT_MS = 2000;
+const CRITICAL_REMOTE_TIMEOUT_MS = 15000;
 const DEFERRED_REMOTE_TIMEOUT_MS = 30000;
 const SERVER_SIDE_AUTOMATIONS_ENABLED = String(import.meta.env.VITE_SERVER_SIDE_AUTOMATIONS || "").trim().toLowerCase() === "true";
 const criticalPortalTables = [
@@ -211,6 +211,10 @@ function withTimeout(promise, milliseconds, label) {
       globalThis.clearTimeout(timeoutId);
     }
   });
+}
+
+function isTimeoutError(error) {
+  return /timed out after/i.test(String(error?.message || ""));
 }
 
 function sleep(milliseconds) {
@@ -860,6 +864,25 @@ function buildLocalState(db, sessionEmail = "") {
     authUser: profile ? { id: profile.user_id, email: profile.email } : null,
     currentUser: profile,
     loading: false,
+  };
+}
+
+function buildSamplePortalState(sessionUser, baseState = {}) {
+  const sampleState = createDemoPortalState();
+  const currentUser = buildCurrentUserFallback(sessionUser) || sampleState.currentUser;
+
+  return {
+    ...baseState,
+    authUser: sessionUser || sampleState.authUser,
+    currentUser,
+    profiles: currentUser ? [currentUser] : sampleState.profiles,
+    students: sampleState.students,
+    courses: normalizeCourseRecords(sampleState.courses),
+    enrollments: sampleState.enrollments,
+    documents: normalizeDocumentsForDisplay(sampleState.documents, sampleState.enrollments),
+    emailLogs: sampleState.emailLogs,
+    auditLogs: sampleState.auditLogs,
+    isSampleData: true,
   };
 }
 
@@ -2404,16 +2427,28 @@ export function AppProvider({ children }) {
             ...fullRemoteState,
             loading: false,
           };
-          writeRemoteStateCache(sessionUser, cacheState);
           if (!hasMeaningfulPortalData(cacheState)) {
-            pushNotification({
-              type: "warning",
-              title: `Supabase returned no student, enrollment, or document rows for this signed-in session on project ${getSupabaseProjectRef(supabaseUrl) || "unknown"}.`,
+            const sampleState = buildSamplePortalState(sessionUser, {
+              courses: cacheState.courses,
+              loading: false,
             });
+            setState((prev) => ({
+              ...sampleState,
+              notifications: prev.notifications,
+            }));
+            writeRemoteStateCache(sessionUser, sampleState);
+            return;
           }
+
+          writeRemoteStateCache(sessionUser, cacheState);
           return;
         } catch (error) {
-          pushNotification({ type: "warning", title: error.message });
+          pushNotification({
+            type: "warning",
+            title: isTimeoutError(error)
+              ? "Supabase is responding slowly. Showing cached/local data while the app keeps trying in the background."
+              : error.message,
+          });
           throw error;
         } finally {
           setState((prev) => ({ ...prev, loading: false }));

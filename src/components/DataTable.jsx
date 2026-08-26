@@ -3,7 +3,7 @@ import StatusBadge from "./StatusBadge";
 export default function DataTable({ columns, rows, onRowClick }) {
   return (
     <div className="panel overflow-hidden">
-      <div className="divide-y divide-slate-100 md:hidden">
+      <div className="divide-y divide-slate-100 lg:hidden">
         {rows.map((row) => (
           <button
             key={row.id}
@@ -31,7 +31,7 @@ export default function DataTable({ columns, rows, onRowClick }) {
         ))}
       </div>
 
-      <div className="hidden max-h-[72vh] overflow-x-auto overflow-y-auto md:block">
+      <div className="hidden max-h-[72vh] overflow-x-auto overflow-y-auto lg:block">
         <table className="min-w-full border-separate border-spacing-0">
           <thead className="bg-white">
             <tr>

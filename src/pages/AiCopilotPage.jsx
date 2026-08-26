@@ -4,6 +4,7 @@ import PageHeader from "../components/PageHeader";
 import { useApp } from "../context/AppContext";
 import { normalizeBatchName } from "../data/courseCatalog";
 import {
+  buildAdmissionsActionPlan,
   buildCopilotRecordSet,
   generateAdmissionsCopilotResponse,
   getAdmissionsUrgency,
@@ -122,7 +123,7 @@ function RecordListItem({ record, active, onSelect }) {
             {record.student?.full_name || "Unnamed student"}
           </p>
           <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 transition duration-300 group-hover:tracking-[0.22em] group-hover:text-sky-700">
-            {record.currentStage || "Unknown"} · {record.course?.course_name || record.enrollment?.course_name || "Course pending"}
+            {record.currentStage || "Unknown"} | {record.course?.course_name || record.enrollment?.course_name || "Course pending"}
           </p>
         </div>
         <span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em] ${urgencyBadgeClass(urgency.level)}`}>
@@ -140,13 +141,16 @@ function RecordListItem({ record, active, onSelect }) {
 }
 
 export default function AiCopilotPage() {
-  const { portalRecords, logEmail } = useApp();
+  const { portalRecords, logEmail, sendDashboardFollowUpEmail, sendPaymentEmail } = useApp();
   const [selectedRecordId, setSelectedRecordId] = useState("");
   const [search, setSearch] = useState("");
   const [intent, setIntent] = useState("summary");
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [sendingDraft, setSendingDraft] = useState(false);
+  const [actionPlan, setActionPlan] = useState(null);
+  const [executingActionId, setExecutingActionId] = useState("");
+  const [completedActionIds, setCompletedActionIds] = useState([]);
   const [result, setResult] = useState({
     mode: "guided_local",
     answer: "",
@@ -216,6 +220,79 @@ export default function AiCopilotPage() {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRunActionAgent = () => {
+    const nextPlan = buildAdmissionsActionPlan(copilotRecords);
+    setActionPlan(nextPlan);
+    setResult((prev) => ({
+      ...prev,
+      answer: nextPlan.summary,
+      suggestions: nextPlan.actions.length
+        ? nextPlan.actions.slice(0, 4).map((action) => action.reason)
+        : ["No urgent agent actions are pending right now."],
+    }));
+  };
+
+  const executeAgentAction = async (action) => {
+    if (!action?.enrollmentId || executingActionId) return;
+
+    const fullRecord = copilotRecords.find((record) => record.id === action.recordId);
+    if (!fullRecord) return;
+
+    try {
+      setExecutingActionId(action.id);
+
+      if (action.actionType === "payment_reminder") {
+        await sendPaymentEmail(action.enrollmentId, {
+          enrollment: fullRecord.enrollment,
+          student: fullRecord.student,
+          course: fullRecord.course,
+          emailVariant: "due_reminder",
+          paymentDate: new Date().toISOString().slice(0, 10),
+        });
+      } else if (action.actionType === "admission_follow_up") {
+        await sendDashboardFollowUpEmail(action.enrollmentId);
+      } else {
+        const subject = extractDraftSubject(action.draft, "Admission Reactivation Support - CERTISURED");
+        const emailText = stripDraftSubject(action.draft) || action.draft;
+        await logEmail("AI Agent Reactivation", fullRecord.enrollment, {
+          student: fullRecord.student,
+          course: fullRecord.course,
+          currentStage: fullRecord.currentStage || "",
+          subject,
+          text: emailText,
+          html: `
+            <div style="margin:0;padding:24px;background:#eef4fb;font-family:'Plus Jakarta Sans',Arial,sans-serif;color:#10233c;">
+              <div style="max-width:680px;margin:0 auto;background:#ffffff;border:1px solid #dbe8f7;border-radius:28px;padding:32px;">
+                ${toEmailHtml(emailText)}
+              </div>
+            </div>
+          `,
+          logType: "AI Agent Reactivation",
+          successTitle: "Agent reactivation email sent successfully.",
+        });
+      }
+
+      setCompletedActionIds((prev) => [...new Set([...prev, action.id])]);
+      setResult((prev) => ({
+        ...prev,
+        suggestions: [
+          `Completed: ${action.title}`,
+          ...(prev.suggestions || []).filter((item) => item !== action.reason),
+        ],
+      }));
+    } catch (error) {
+      setResult((prev) => ({
+        ...prev,
+        suggestions: [
+          error?.message || "Agent action could not be executed.",
+          ...(prev.suggestions || []),
+        ],
+      }));
+    } finally {
+      setExecutingActionId("");
     }
   };
 
@@ -292,9 +369,9 @@ export default function AiCopilotPage() {
         </div>
       </div>
 
-      <section className="relative overflow-hidden rounded-[36px] bg-[radial-gradient(circle_at_top_left,rgba(125,211,252,0.26),transparent_28%),radial-gradient(circle_at_bottom_left,rgba(250,204,21,0.22),transparent_24%),radial-gradient(circle_at_top_right,rgba(147,197,253,0.2),transparent_26%),linear-gradient(180deg,#f8fbff_0%,#eef4fb_100%)] p-4 md:p-5">
+      <section className="relative min-w-0 overflow-hidden rounded-[24px] bg-[radial-gradient(circle_at_top_left,rgba(125,211,252,0.26),transparent_28%),radial-gradient(circle_at_bottom_left,rgba(250,204,21,0.22),transparent_24%),radial-gradient(circle_at_top_right,rgba(147,197,253,0.2),transparent_26%),linear-gradient(180deg,#f8fbff_0%,#eef4fb_100%)] p-3 sm:rounded-[36px] md:p-5">
         <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[linear-gradient(180deg,rgba(255,255,255,0.52),transparent)]" />
-        <div className="grid gap-6 xl:grid-cols-[320px,minmax(0,1fr)]">
+        <div className="grid min-w-0 gap-5 xl:grid-cols-[320px,minmax(0,1fr)]">
           <aside className="panel border-white/70 bg-white/88 p-5 shadow-[0_24px_60px_rgba(148,163,184,0.18)] backdrop-blur-sm">
             <p className="section-kicker">Records</p>
             <h2 className="mt-1 bg-gradient-to-r from-sky-900 via-cyan-700 to-emerald-600 bg-clip-text text-lg font-semibold text-transparent">
@@ -310,7 +387,7 @@ export default function AiCopilotPage() {
               />
             </div>
 
-            <div className="mt-4 max-h-[68vh] space-y-3 overflow-y-auto pr-1">
+            <div className="mt-4 max-h-[22rem] space-y-3 overflow-y-auto pr-1 xl:max-h-[68vh]">
               {filteredRecords.length ? (
                 filteredRecords.map((record) => (
                   <RecordListItem
@@ -328,7 +405,7 @@ export default function AiCopilotPage() {
             </div>
           </aside>
 
-          <div className="space-y-6">
+          <div className="min-w-0 space-y-6">
             <section className="panel border-white/75 bg-white/88 p-5 shadow-[0_26px_60px_rgba(148,163,184,0.16)] backdrop-blur-sm md:p-6">
               <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                 <div className="min-w-0">
@@ -339,7 +416,7 @@ export default function AiCopilotPage() {
                         {selectedRecord.student?.full_name || "Unnamed student"}
                       </h2>
                       <p className="mt-1 text-sm text-slate-600">
-                        {selectedRecord.course?.course_name || selectedRecord.enrollment?.course_name || "Course pending"} · {selectedRecord.currentStage || "Unknown"} · {normalizeBatchName(selectedRecord.enrollment?.batch) || "Batch pending"}
+                        {selectedRecord.course?.course_name || selectedRecord.enrollment?.course_name || "Course pending"} | {selectedRecord.currentStage || "Unknown"} | {normalizeBatchName(selectedRecord.enrollment?.batch) || "Batch pending"}
                       </p>
                       {selectedUrgency ? (
                         <span className={`mt-3 inline-flex rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] shadow-[0_8px_20px_rgba(148,163,184,0.12)] ${urgencyBadgeClass(selectedUrgency.level)}`}>
@@ -352,7 +429,7 @@ export default function AiCopilotPage() {
                   )}
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   <DetailPill label="Payment" value={selectedRecord?.enrollment?.payment_status || "Pending"} />
                   <DetailPill label="Follow-up" value={formatDate(selectedRecord?.enrollment?.follow_up_date)} />
                   <DetailPill label="Due amount" value={selectedPayment?.totalFee ? formatCurrency(selectedPayment.dueAmount) : "N/A"} />
@@ -360,8 +437,8 @@ export default function AiCopilotPage() {
               </div>
             </section>
 
-            <section className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr),minmax(280px,0.8fr)]">
-              <div className="panel border-white/75 bg-white/88 p-5 shadow-[0_26px_60px_rgba(148,163,184,0.16)] backdrop-blur-sm md:p-6">
+            <section className="space-y-6">
+              <div className="panel min-w-0 border-white/75 bg-white/88 p-4 shadow-[0_26px_60px_rgba(148,163,184,0.16)] backdrop-blur-sm md:p-6">
                 <div className="flex flex-wrap gap-2.5">
                   <ActionChip active={intent === "summary"} onClick={() => void handleGenerate("summary")}>Summary</ActionChip>
                   <ActionChip active={intent === "next_step"} onClick={() => void handleGenerate("next_step")}>Next step</ActionChip>
@@ -377,7 +454,7 @@ export default function AiCopilotPage() {
                   />
                 </div>
 
-                <div className="mt-4 flex flex-wrap gap-3">
+                <div className="mt-4 grid gap-3 sm:flex sm:flex-wrap">
                   <button type="button" className="button-primary" onClick={() => void handleGenerate(intent)} disabled={loading}>
                     {loading ? "Thinking..." : "Ask agent"}
                   </button>
@@ -404,10 +481,17 @@ export default function AiCopilotPage() {
                   >
                     {sendingDraft ? "Sending..." : emailRecipientRecords.length > 1 ? `Send ${emailRecipientRecords.length} emails` : "Send email"}
                   </button>
+                  <button
+                    type="button"
+                    className="button-primary"
+                    onClick={handleRunActionAgent}
+                  >
+                    Run action agent
+                  </button>
                 </div>
 
                 {result.answer ? (
-                  <div className="mt-6 rounded-[24px] border border-sky-100/90 bg-[linear-gradient(145deg,rgba(239,249,255,0.98),rgba(247,250,255,0.96)_55%,rgba(238,242,255,0.98))] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_16px_38px_rgba(125,211,252,0.14)] transition duration-300 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_22px_44px_rgba(96,165,250,0.18)]">
+                  <div className="mt-6 rounded-[20px] border border-sky-100/90 bg-[linear-gradient(145deg,rgba(239,249,255,0.98),rgba(247,250,255,0.96)_55%,rgba(238,242,255,0.98))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_16px_38px_rgba(125,211,252,0.14)] transition duration-300 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_22px_44px_rgba(96,165,250,0.18)] sm:rounded-[24px] sm:p-5">
                     <p className="bg-gradient-to-r from-sky-700 via-cyan-600 to-indigo-600 bg-clip-text text-[11px] font-bold uppercase tracking-[0.24em] text-transparent">
                       Answer
                     </p>
@@ -436,7 +520,7 @@ export default function AiCopilotPage() {
                                 {record.studentName}
                               </p>
                               <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 transition duration-300 group-hover:tracking-[0.22em] group-hover:text-sky-700">
-                                {record.stage} · {record.courseName} · {normalizeBatchName(record.batch) || "N/A"}
+                                {record.stage} | {record.courseName} | {normalizeBatchName(record.batch) || "N/A"}
                               </p>
                             </div>
                             <span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em] ${urgencyBadgeClass(record.urgencyLevel)}`}>
@@ -456,11 +540,86 @@ export default function AiCopilotPage() {
 
               <div className="space-y-6">
                 <div className="panel border-white/75 bg-white/88 p-5 shadow-[0_26px_60px_rgba(148,163,184,0.16)] backdrop-blur-sm md:p-6">
-                  <p className="section-kicker">Action items</p>
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <p className="section-kicker">Agentic workflow</p>
+                      <h3 className="mt-1 text-lg font-semibold text-slate-950">Admissions Action Agent</h3>
+                    </div>
+                    {actionPlan ? (
+                      <span className="inline-flex rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">
+                        {actionPlan.actions.length} planned
+                      </span>
+                    ) : null}
+                  </div>
+                  {actionPlan ? (
+                    <div className="mt-4 space-y-4">
+                      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr),auto] md:items-center">
+                        <div className="rounded-[18px] border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
+                          {actionPlan.summary}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {["Observe", "Reason", "Plan", "Act", "Log"].map((step, index) => (
+                            <span key={step} className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600">
+                              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-brand-500 text-[10px] text-white">{index + 1}</span>
+                              {step}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="space-y-3">
+                        {actionPlan.actions.length ? (
+                          actionPlan.actions.map((action) => {
+                            const completed = completedActionIds.includes(action.id);
+                            return (
+                              <div key={action.id} className="rounded-[18px] border border-sky-100 bg-[linear-gradient(145deg,#ffffff,#f7fbff_55%,#f0fdf4)] p-4 shadow-[0_12px_28px_rgba(148,163,184,0.1)]">
+                                <div className="grid gap-4 lg:grid-cols-[2rem,minmax(0,1fr),11rem] lg:items-center">
+                                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-900 text-sm font-bold text-white">
+                                    {actionPlan.actions.findIndex((item) => item.id === action.id) + 1}
+                                  </span>
+                                  <div className="min-w-0">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <p className="text-sm font-semibold text-slate-950">{action.title}</p>
+                                      <span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] ${urgencyBadgeClass(action.urgencyLevel)}`}>
+                                        {action.urgencyLevel}
+                                      </span>
+                                    </div>
+                                    <p className="mt-1 text-xs leading-5 text-slate-600">{action.reason}</p>
+                                    <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
+                                      Tool: {action.toolName}
+                                    </p>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    className={`${completed ? "button-secondary" : "button-primary"} w-full px-3 py-2.5 text-xs`}
+                                    onClick={() => void executeAgentAction(action)}
+                                    disabled={completed || executingActionId === action.id}
+                                  >
+                                    {completed ? "Completed" : executingActionId === action.id ? "Running..." : action.commandLabel}
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <div className="rounded-[20px] border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                            No urgent agent actions are pending.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-4 rounded-[20px] border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                      Run the action agent to create an autonomous priority plan.
+                    </div>
+                  )}
+                </div>
+
+                <div className="panel border-white/75 bg-white/88 p-5 shadow-[0_26px_60px_rgba(148,163,184,0.16)] backdrop-blur-sm md:p-6">
+                  <p className="section-kicker">Agent notes</p>
                   <div className="mt-4 space-y-3">
                     {result.suggestions.length ? (
-                      result.suggestions.map((item) => (
-                        <div key={item} className="rounded-[20px] border border-cyan-100 bg-[linear-gradient(145deg,#ffffff,#f0f9ff_52%,#ecfeff)] px-4 py-3 text-sm text-slate-700 shadow-[0_10px_24px_rgba(148,163,184,0.08)] transition duration-300 hover:-translate-y-1 hover:border-sky-200 hover:shadow-[0_18px_32px_rgba(34,211,238,0.14)]">
+                      result.suggestions.slice(0, 4).map((item) => (
+                        <div key={item} className="rounded-[16px] border border-cyan-100 bg-[linear-gradient(145deg,#ffffff,#f0f9ff_52%,#ecfeff)] px-4 py-3 text-sm text-slate-700 shadow-[0_10px_24px_rgba(148,163,184,0.08)]">
                           {item}
                         </div>
                       ))

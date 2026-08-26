@@ -429,16 +429,16 @@ export default function LandingPageSimple() {
       <div className="pointer-events-none absolute bottom-[-8rem] left-[22%] h-[18rem] w-[18rem] rounded-full bg-accent-100/25 blur-[140px]" />
 
       <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/78 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-5 md:px-8 lg:px-12">
+        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:py-5 md:px-8 lg:px-12">
           <BrandLogo
             size="sm"
             subtitle="Admissions OS"
             className="gap-4"
-            iconClassName="h-[3.15rem] w-[3.15rem] rounded-[18px] shadow-[0_16px_30px_rgba(11,53,88,0.12)]"
-            wordmarkClassName="text-[1.95rem] tracking-[-0.055em]"
-            subtitleClassName="text-[11px] tracking-[0.28em] text-brand-500/72"
+            iconClassName="h-11 w-11 rounded-[16px] shadow-[0_16px_30px_rgba(11,53,88,0.12)] sm:h-[3.15rem] sm:w-[3.15rem] sm:rounded-[18px]"
+            wordmarkClassName="text-[1.55rem] tracking-[-0.03em] sm:text-[1.95rem] sm:tracking-[-0.055em]"
+            subtitleClassName="text-[10px] tracking-[0.18em] text-brand-500/72 sm:text-[11px] sm:tracking-[0.28em]"
           />
-          <div className="flex items-center gap-3">
+          <div className="grid w-full grid-cols-2 gap-3 sm:flex sm:w-auto sm:items-center">
             <button
               type="button"
               onClick={() => setShowAdminAlert(true)}
@@ -456,13 +456,13 @@ export default function LandingPageSimple() {
         </div>
       </header>
 
-      <main id="top" className="mx-auto max-w-7xl px-4 py-10 md:px-8 lg:px-12 lg:py-16">
+      <main id="top" className="mx-auto max-w-7xl px-4 py-8 md:px-8 lg:px-12 lg:py-16">
         <section className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(420px,540px)] lg:items-center">
           <div className="fade-in-up max-w-4xl">
             <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-brand-500/72">ENROLLEASE  AI</p>
             <h1
               aria-label="Smart Admissions For Students And Admins"
-              className={`hero-heading-live mt-4 min-h-[5.9em] max-w-3xl font-display text-5xl font-semibold leading-[0.98] tracking-[-0.06em] text-brand-900 md:text-6xl ${headingFading ? "is-fading" : ""}`}
+              className={`hero-heading-live mt-4 min-h-[5.4em] max-w-3xl font-display text-[2.45rem] font-semibold leading-tight tracking-[-0.02em] text-brand-900 sm:text-5xl md:min-h-[5.9em] md:text-6xl md:leading-[0.98] md:tracking-[-0.06em] ${headingFading ? "is-fading" : ""}`}
             >
               {heroWords.map((word, index) => (
                 <span
@@ -479,7 +479,7 @@ export default function LandingPageSimple() {
               </p>
             ) : null}
             {ctaVisible ? (
-              <div className="fade-in-up mt-9 flex flex-wrap gap-4">
+              <div className="fade-in-up mt-9 grid gap-3 sm:flex sm:flex-wrap sm:gap-4">
                 <Link
                   to="/enquiry"
                   className="inline-flex items-center justify-center rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-brand-500 shadow-[0_18px_36px_rgba(11,53,88,0.08)] transition duration-200 hover:-translate-y-0.5 hover:border-brand-300 focus:outline-none focus:ring-4 focus:ring-accent-100"
@@ -497,7 +497,7 @@ export default function LandingPageSimple() {
           </div>
 
           <div className="relative flex items-center justify-center lg:justify-end">
-            <div className="relative h-[420px] w-full max-w-[880px] overflow-hidden rounded-[36px] border border-sky-100 bg-[linear-gradient(135deg,rgba(177,217,255,0.32),rgba(255,255,255,0.84),rgba(209,244,255,0.48))] shadow-[0_32px_80px_rgba(148,163,184,0.13)]">
+            <div className="relative h-[260px] w-full max-w-[880px] overflow-hidden rounded-[24px] border border-sky-100 bg-[linear-gradient(135deg,rgba(177,217,255,0.32),rgba(255,255,255,0.84),rgba(209,244,255,0.48))] shadow-[0_32px_80px_rgba(148,163,184,0.13)] sm:h-[360px] sm:rounded-[36px] lg:h-[420px]">
               <div
                 className="flex h-full w-full transition-transform duration-700 ease-out"
                 style={{ transform: `translate3d(-${activeHeroSlide * 100}%, 0, 0)` }}
@@ -519,7 +519,7 @@ export default function LandingPageSimple() {
         <section id="courses" className="mt-16">
           <div className="grid gap-10 lg:grid-cols-[1fr_1.1fr] lg:items-center">
             <div className="max-w-2xl">
-              <h2 className="font-display text-5xl font-semibold leading-[1.18] tracking-[-0.05em] text-slate-950 md:text-6xl">
+              <h2 className="font-display text-4xl font-semibold leading-[1.18] tracking-[-0.02em] text-slate-950 md:text-6xl md:tracking-[-0.05em]">
                 <span className="certisured-heading-glow block">Be more than Certified</span>
                 <span className="certisured-heading-glow mt-3 block">Be Certisured</span>
               </h2>
@@ -537,7 +537,7 @@ export default function LandingPageSimple() {
         <section className="mt-16">
           <div className="max-w-3xl">
             <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-brand-500/72">Courses</p>
-            <h2 className="mt-3 font-display text-4xl font-semibold tracking-[-0.05em] text-slate-950 md:text-5xl">
+            <h2 className="mt-3 font-display text-3xl font-semibold tracking-[-0.02em] text-slate-950 md:text-5xl md:tracking-[-0.05em]">
               Explore your current course lineup
             </h2>
           </div>
@@ -566,7 +566,7 @@ export default function LandingPageSimple() {
               </div>
 
               <form onSubmit={handleCourseSuggestion} className="rounded-[26px] border border-white/90 bg-white/88 p-4 shadow-[0_18px_42px_rgba(15,23,42,0.08)] md:p-5">
-                <div className="grid gap-3 md:grid-cols-3">
+                <div className="grid gap-3 lg:grid-cols-3">
                   <input
                     value={advisorForm.education}
                     onChange={(event) => updateAdvisorForm("education", event.target.value)}
@@ -589,7 +589,7 @@ export default function LandingPageSimple() {
                     className="border-sky-100 bg-sky-50/60"
                   />
                 </div>
-                <div className="mt-4 flex flex-wrap gap-3">
+                <div className="mt-4 grid gap-3 sm:flex sm:flex-wrap">
                   <button type="submit" className="button-primary" disabled={advisorThinking}>
                     {advisorThinking ? "Finding best fit..." : "Suggest my course"}
                   </button>
@@ -638,7 +638,7 @@ export default function LandingPageSimple() {
                     </div>
                     <p className="mt-4 text-sm leading-7 text-slate-600">{courseSuggestion.reason}</p>
                     <p className="mt-2 text-sm font-semibold leading-7 text-slate-800">{courseSuggestion.nextStep}</p>
-                    <Link to="/enquiry" className="mt-5 inline-flex items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#0891b2,#10b981)] px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(8,145,178,0.18)] transition duration-200 hover:-translate-y-0.5">
+                    <Link to="/enquiry" className="mt-5 inline-flex w-full items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#0891b2,#10b981)] px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(8,145,178,0.18)] transition duration-200 hover:-translate-y-0.5 sm:w-auto">
                       Enquire for this course
                     </Link>
                   </div>
@@ -647,7 +647,7 @@ export default function LandingPageSimple() {
             </div>
           </section>
 
-          <div className="mt-8 grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          <div className="mt-8 grid gap-3 lg:grid-cols-3 xl:grid-cols-5">
             {courses.map((course, index) => {
               const flipped = Boolean(flippedCourses[course.key]);
               const theme = courseCardThemes[index % courseCardThemes.length];

@@ -31,7 +31,7 @@ export default function SettingsPageSimple() {
         description="Maintain administrator credentials without changing authentication behavior."
       />
 
-      <section className="panel max-w-3xl p-6">
+      <section className="panel max-w-3xl p-4 sm:p-6">
         <h2 className="section-title">Reset Password</h2>
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           <input

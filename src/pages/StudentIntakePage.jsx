@@ -426,7 +426,7 @@ export default function StudentIntakePage() {
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-100 px-6">
-        <div className="panel w-full max-w-lg px-8 py-12 text-center">
+        <div className="panel w-full max-w-lg px-5 py-8 text-center sm:px-8 sm:py-12">
           <h1 className="text-3xl font-semibold text-slate-950">Student Form</h1>
           <p className="mt-3 text-sm text-slate-600">Loading enrollment form...</p>
         </div>
@@ -437,7 +437,7 @@ export default function StudentIntakePage() {
   if (error && !requestData) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-100 px-6">
-        <div className="panel w-full max-w-xl px-8 py-12 text-center">
+        <div className="panel w-full max-w-xl px-5 py-8 text-center sm:px-8 sm:py-12">
           <h1 className="text-3xl font-semibold text-slate-950">Student Form</h1>
           <p className="mt-4 text-sm font-semibold text-rose-600">{error}</p>
         </div>
@@ -446,20 +446,20 @@ export default function StudentIntakePage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 px-4 py-8 md:px-6">
+    <div className="min-h-screen overflow-x-clip bg-slate-100 px-3 py-5 sm:px-4 sm:py-8 md:px-6">
       <div className="mx-auto max-w-6xl">
-        <section className={`mb-6 p-6 ${formPanelClass}`}>
+        <section className={`mb-6 p-4 sm:p-6 ${formPanelClass}`}>
           <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400">Complete Admission</p>
-          <h1 className="mt-2 text-4xl font-semibold tracking-[-0.04em] text-slate-950">Student Form</h1>
+          <h1 className="mt-2 text-3xl font-semibold tracking-[-0.02em] text-slate-950 sm:text-4xl sm:tracking-[-0.04em]">Student Form</h1>
           <p className="mt-3 text-sm text-slate-600">
             Complete the same enrollment details shared by the admissions team.
           </p>
         </section>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          <section className={`${formPanelClass} p-6`}>
+          <section className={`${formPanelClass} p-4 sm:p-6`}>
             <h2 className="section-title">Student Details</h2>
-            <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="mt-6 grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
               <input
                 value={form.full_name}
                 onChange={(event) => updateForm("full_name", event.target.value)}
@@ -512,9 +512,9 @@ export default function StudentIntakePage() {
             </div>
           </section>
 
-          <section className={`${formPanelClass} p-6`}>
+          <section className={`${formPanelClass} p-4 sm:p-6`}>
             <h2 className="section-title">Admission Details</h2>
-            <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+            <div className="mt-6 grid gap-4 lg:grid-cols-2 xl:grid-cols-5">
               <LabeledField label="Lead Date *">
                 <input
                   type="date"
@@ -571,9 +571,9 @@ export default function StudentIntakePage() {
             </div>
           </section>
 
-          <section className={`${formPanelClass} p-6`}>
+          <section className={`${formPanelClass} p-4 sm:p-6`}>
             <h2 className="section-title">Payment Details</h2>
-            <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="mt-6 grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
               <LabeledField label="Payment Method *">
                 <select value={form.payment_method} onChange={(event) => updateForm("payment_method", event.target.value)} required className={fieldSurfaceClasses.payment_method}>
                   {paymentMethods.filter((item) => item !== "Pending").map((method) => (
@@ -687,10 +687,10 @@ export default function StudentIntakePage() {
             ) : null}
           </section>
 
-          <section className={`${formPanelClass} p-6`}>
+          <section className={`${formPanelClass} p-4 sm:p-6`}>
             <h2 className="section-title">Student Uploads</h2>
-            <div className="mt-6 grid gap-5 md:grid-cols-2">
-              <div className="flex min-h-[22rem] flex-col rounded-[24px] border border-dashed border-slate-300 bg-slate-50 p-5">
+            <div className="mt-6 grid gap-5 lg:grid-cols-2">
+              <div className="flex min-h-[18rem] min-w-0 flex-col rounded-[24px] border border-dashed border-slate-300 bg-slate-50 p-4 sm:min-h-[22rem] sm:p-5">
                 <div>
                   <p className="font-semibold text-slate-900">Student photo</p>
                   <p className="mt-1 text-sm text-slate-500">Upload PNG, JPG, JPEG, or PDF.</p>
@@ -706,11 +706,11 @@ export default function StudentIntakePage() {
                   src={photoPreview}
                   alt="Student preview"
                   title="Student photo"
-                  className="mt-4 min-h-[220px] w-full flex-1 rounded-[24px] border border-slate-200 bg-white object-cover"
+                  className="mt-4 min-h-[180px] w-full flex-1 rounded-[24px] border border-slate-200 bg-white object-cover sm:min-h-[220px]"
                 />
               </div>
 
-              <div className="flex min-h-[22rem] flex-col rounded-[24px] border border-dashed border-slate-300 bg-slate-50 p-5">
+              <div className="flex min-h-[18rem] min-w-0 flex-col rounded-[24px] border border-dashed border-slate-300 bg-slate-50 p-4 sm:min-h-[22rem] sm:p-5">
                 <div>
                   <p className="font-semibold text-slate-900">Aadhaar document</p>
                   <p className="mt-1 text-sm text-slate-500">Upload PNG, JPG, JPEG, or PDF.</p>
@@ -727,13 +727,13 @@ export default function StudentIntakePage() {
                   alt="Aadhaar preview"
                   title="Aadhaar document"
                   enablePdfZoom
-                  className="mt-4 min-h-[260px] w-full flex-1"
+                  className="mt-4 min-h-[200px] w-full flex-1 sm:min-h-[260px]"
                 />
               </div>
             </div>
           </section>
 
-          <section className={`${formPanelClass} p-6`}>
+          <section className={`${formPanelClass} p-4 sm:p-6`}>
             <h2 className="section-title">Notes</h2>
             <div className="mt-6">
               <textarea
@@ -749,7 +749,7 @@ export default function StudentIntakePage() {
           {error ? <p className="text-sm font-semibold text-brand-500">{error}</p> : null}
           {successMessage ? <p className="text-sm font-semibold text-emerald-600">{successMessage}</p> : null}
 
-          <div className="flex flex-wrap gap-3">
+          <div className="grid gap-3 sm:flex sm:flex-wrap">
             <button type="submit" className="button-primary" disabled={submitting || Boolean(successMessage)}>
               {submitting ? "Submitting..." : successMessage ? "Submitted" : "Complete Enrollment"}
             </button>

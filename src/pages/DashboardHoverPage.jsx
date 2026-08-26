@@ -545,7 +545,7 @@ export default function DashboardHoverPage() {
     <AppShell>
       <PageHeader eyebrow="Dashboard" title="Admissions management overview" />
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {dashboard.cards.map((card) => (
           <SummaryCard key={card.title} {...card} />
         ))}
@@ -625,13 +625,13 @@ export default function DashboardHoverPage() {
         </DashboardCard>
       ) : (
         <div className="space-y-6">
-          <section className="grid gap-6 xl:grid-cols-2">
+          <section className="grid min-w-0 gap-5 xl:grid-cols-2">
             <div onMouseEnter={() => triggerChartHover("enquiries")}>
               <DashboardCard
                 title="Enquiries vs Enrollments"
                 subtitle="Monthly comparison of incoming leads and confirmed admissions."
               >
-                <div className="h-[300px]">
+                <div className="h-[240px] sm:h-[300px]">
                   <Bar
                     key={`enquiries-${chartReplay.enquiries}`}
                     data={dashboard.enquiriesVsEnrollmentsData}
@@ -646,7 +646,7 @@ export default function DashboardHoverPage() {
                 title="Payment Status"
                 subtitle="Share of paid, partial, and pending collections."
               >
-                <div className="h-[300px]">
+                <div className="h-[240px] sm:h-[300px]">
                   <Pie
                     key={`payment-${chartReplay.payment}`}
                     data={dashboard.paymentStatusData}
@@ -657,13 +657,13 @@ export default function DashboardHoverPage() {
             </div>
           </section>
 
-          <section className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+          <section className="grid min-w-0 gap-5 xl:grid-cols-[1.05fr_0.95fr]">
             <div onMouseEnter={() => triggerChartHover("monthly")}>
               <DashboardCard
                 title="Monthly Admissions Trend"
                 subtitle="Confirmed admissions across the recent six-month window."
               >
-                <div className="h-[300px]">
+                <div className="h-[240px] sm:h-[300px]">
                   <Line
                     key={`monthly-${chartReplay.monthly}`}
                     data={dashboard.monthlyAdmissionsData}

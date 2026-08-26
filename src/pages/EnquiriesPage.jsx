@@ -460,8 +460,8 @@ export default function EnquiriesPage() {
         onChange={handleCsvUpload}
       />
 
-      <section className="mb-4 flex items-center justify-between gap-3">
-        <div className="grid w-full gap-3 md:max-w-4xl md:grid-cols-[minmax(0,1fr)_260px]">
+      <section className="mb-4 flex min-w-0 items-center justify-between gap-3">
+        <div className="grid w-full gap-3 lg:max-w-4xl lg:grid-cols-[minmax(0,1fr)_260px]">
           <input
             type="text"
             value={nameFilter}
@@ -506,7 +506,7 @@ export default function EnquiriesPage() {
 
               return (
                 <>
-                  <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                  <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                     <div className="flex min-w-0 items-center gap-2.5 xl:w-[21%]">
                       <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border text-sm font-semibold uppercase tracking-[0.06em] ${tone.badgeClass}`}>
                         {initials}
@@ -539,7 +539,7 @@ export default function EnquiriesPage() {
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2.5 xl:w-[18%] xl:justify-end">
+                    <div className="grid gap-2.5 sm:flex sm:flex-wrap sm:items-center xl:w-[18%] xl:justify-end">
                       <button
                         type="button"
                         className={`status-pill flex items-center gap-2 ${
@@ -599,12 +599,12 @@ export default function EnquiriesPage() {
       </div>
 
       {selectedFollowUpRecord ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4">
-          <div className="w-full max-w-2xl rounded-[28px] border border-slate-200 bg-white p-6 shadow-2xl">
-            <div className="flex items-start justify-between gap-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-3 sm:p-4">
+          <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-[24px] border border-slate-200 bg-white p-4 shadow-2xl sm:rounded-[28px] sm:p-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <p className="section-kicker">Follow-up Status</p>
-                <h2 className="mt-3 text-2xl font-semibold text-slate-950">{selectedFollowUpRecord.student.full_name}</h2>
+                <h2 className="mt-3 break-words text-xl font-semibold text-slate-950 sm:text-2xl">{selectedFollowUpRecord.student.full_name}</h2>
                 <p className="mt-2 text-sm text-slate-500">{selectedFollowUpRecord.student.email || "No email available"}</p>
               </div>
               <button type="button" className="button-secondary px-3 py-2 text-sm" onClick={() => setSelectedFollowUpId("")}>
@@ -612,7 +612,7 @@ export default function EnquiriesPage() {
               </button>
             </div>
 
-            <div className="mt-6 grid gap-4 md:grid-cols-2">
+            <div className="mt-6 grid gap-4 lg:grid-cols-2">
               <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-4">
                 <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Next follow-up</p>
                 <p className="mt-2 text-lg font-semibold text-slate-900">
@@ -633,7 +633,7 @@ export default function EnquiriesPage() {
             </div>
 
             <div className="mt-6 rounded-[24px] border border-slate-200 bg-white p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="grid gap-3 sm:flex sm:flex-wrap sm:items-center sm:justify-between">
                 <p className="font-semibold text-slate-900">Send follow-up email</p>
                 <button
                   type="button"

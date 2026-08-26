@@ -171,17 +171,17 @@ function PreviewModal({ preview, onClose }) {
   }, [preview?.src]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4" onClick={onClose} role="presentation">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-3 sm:p-4" onClick={onClose} role="presentation">
       <div
-        className="relative max-h-[92vh] w-full max-w-5xl rounded-[28px] bg-white p-4 shadow-2xl"
+        className="relative max-h-[92vh] w-full max-w-5xl overflow-hidden rounded-[24px] bg-white p-3 shadow-2xl sm:rounded-[28px] sm:p-4"
         onClick={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label={preview.title}
       >
-        <div className="mb-4 flex items-center justify-between gap-4">
-          <p className="font-semibold text-slate-900">{preview.title}</p>
-          <div className="flex items-center gap-3">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="break-words font-semibold text-slate-900">{preview.title}</p>
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-3">
             {supportsZoom ? (
               <>
                 <button
@@ -211,7 +211,7 @@ function PreviewModal({ preview, onClose }) {
           </div>
         </div>
         {supportsZoom ? (
-          <div className="max-h-[76vh] min-h-[420px] w-full overflow-auto rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+          <div className="max-h-[70vh] min-h-[260px] w-full overflow-auto rounded-[20px] border border-slate-200 bg-slate-50 p-3 sm:max-h-[76vh] sm:min-h-[420px] sm:rounded-[24px] sm:p-4">
             <div className="flex min-h-full min-w-full items-start justify-center">
               <img
                 src={preview.src}
@@ -227,7 +227,7 @@ function PreviewModal({ preview, onClose }) {
             alt={preview.title}
             title={preview.title}
             enablePdfZoom
-            className="max-h-[76vh] min-h-[420px] w-full rounded-[24px] border border-slate-200 bg-slate-50 object-contain"
+            className="max-h-[70vh] min-h-[260px] w-full rounded-[20px] border border-slate-200 bg-slate-50 object-contain sm:max-h-[76vh] sm:min-h-[420px] sm:rounded-[24px]"
           />
         )}
       </div>
@@ -620,11 +620,11 @@ export default function StudentProfilePageFixed() {
             </div>
           </section>
 
-          <section className="panel p-6">
+          <section className="panel p-4 sm:p-6">
             <h2 className="section-title">Complete profile</h2>
             {editingProfile ? (
               <div className="mt-6 space-y-5">
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-4 lg:grid-cols-2">
                   <EditField label="Custom student ID">
                     <input value={profileForm.student_code} onChange={(event) => handleProfileFieldChange("student_code", event.target.value)} />
                   </EditField>
@@ -652,7 +652,7 @@ export default function StudentProfilePageFixed() {
                     onChange={(event) => handleProfileFieldChange("remarks", event.target.value)}
                   />
                 </EditField>
-                <div className="flex flex-wrap gap-3">
+                <div className="grid gap-3 sm:flex sm:flex-wrap">
                   <button type="button" className="button-primary" onClick={handleProfileSave} disabled={savingProfile}>
                     {savingProfile ? "Saving..." : "Save changes"}
                   </button>
@@ -703,7 +703,7 @@ export default function StudentProfilePageFixed() {
                     {timelineValidationMessages.join(" ")}
                   </div>
                 ) : null}
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-4 lg:grid-cols-2">
                   <DetailCard label="Lead date" value={formatDate(normalized.enrollment.lead_date)} />
                   <DetailCard label="Enrolled date" value={formatDate(normalized.enrollment.enrolled_date)} />
                   <DetailCard label="Custom student ID" value={student.student_code} />
@@ -716,11 +716,11 @@ export default function StudentProfilePageFixed() {
             )}
           </section>
 
-          <section className="panel p-6">
+          <section className="panel p-4 sm:p-6">
             <h2 className="section-title">Document previews</h2>
-            <div className="mt-6 grid gap-5 md:grid-cols-2">
+            <div className="mt-6 grid gap-5 lg:grid-cols-2">
               <div className="flex h-full flex-col">
-                <p className="mb-3 min-h-[3.75rem] text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Student photo</p>
+                <p className="mb-3 text-sm font-semibold uppercase tracking-[0.14em] text-slate-500 sm:min-h-[3.75rem] sm:tracking-[0.18em]">Student photo</p>
                 {studentPhotoUrl ? (
                   <button
                     type="button"
@@ -732,7 +732,7 @@ export default function StudentProfilePageFixed() {
                       alt={`${student.full_name} photo`}
                       title={`${student.full_name} photo`}
                       fileName={`${student.full_name}-photo`}
-                      className="h-56 w-full rounded-[28px] border border-slate-200 bg-slate-50 object-cover"
+                      className="h-48 w-full rounded-[24px] border border-slate-200 bg-slate-50 object-cover sm:h-56 sm:rounded-[28px]"
                     />
                   </button>
                 ) : (
@@ -740,12 +740,12 @@ export default function StudentProfilePageFixed() {
                     src=""
                     alt="Student photo"
                     title="Student photo"
-                    className="h-56 w-full flex-1 rounded-[28px] border border-slate-200 bg-slate-50"
+                    className="h-48 w-full flex-1 rounded-[24px] border border-slate-200 bg-slate-50 sm:h-56 sm:rounded-[28px]"
                   />
                 )}
               </div>
               <div className="flex h-full flex-col">
-                <p className="mb-3 min-h-[3.75rem] text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Aadhaar document</p>
+                <p className="mb-3 text-sm font-semibold uppercase tracking-[0.14em] text-slate-500 sm:min-h-[3.75rem] sm:tracking-[0.18em]">Aadhaar document</p>
                 {aadhaarDocumentUrl ? (
                   <button
                     type="button"
@@ -757,7 +757,7 @@ export default function StudentProfilePageFixed() {
                       alt="Aadhaar"
                       title="Aadhaar document"
                       fileName={`${student.full_name}-aadhaar`}
-                      className="h-56 w-full rounded-[28px] border border-slate-200 bg-slate-50 object-cover"
+                      className="h-48 w-full rounded-[24px] border border-slate-200 bg-slate-50 object-cover sm:h-56 sm:rounded-[28px]"
                     />
                   </button>
                 ) : (
@@ -765,7 +765,7 @@ export default function StudentProfilePageFixed() {
                     src=""
                     alt="Aadhaar"
                     title="Aadhaar document"
-                    className="h-56 w-full flex-1 rounded-[28px] border border-slate-200 bg-slate-50"
+                    className="h-48 w-full flex-1 rounded-[24px] border border-slate-200 bg-slate-50 sm:h-56 sm:rounded-[28px]"
                   />
                 )}
               </div>
@@ -774,7 +774,7 @@ export default function StudentProfilePageFixed() {
         </div>
 
         <div className="space-y-6">
-          <section className="panel p-6">
+          <section className="panel p-4 sm:p-6">
             <h2 className="section-title">Enrollment and payment summary</h2>
             {isPreEnrollment ? (
               <div className="mt-6 rounded-[24px] border border-slate-200 bg-surface-50 p-5">
@@ -783,7 +783,7 @@ export default function StudentProfilePageFixed() {
                 <p className="mt-2 text-sm text-slate-600">Payment details become available after this enquiry is converted to enrolled status.</p>
               </div>
             ) : (
-              <div className="mt-6 grid gap-4 md:grid-cols-2">
+              <div className="mt-6 grid gap-4 lg:grid-cols-2">
                 {normalized.discountAmount > 0 ? (
                   <>
                     <DetailCard label="Original fee" value={formatCurrencyValue(normalized.originalFee)} />
@@ -823,8 +823,8 @@ export default function StudentProfilePageFixed() {
             ) : null}
           </section>
 
-          <section className="panel p-6">
-            <div className="flex flex-wrap items-start justify-between gap-3">
+          <section className="panel p-4 sm:p-6">
+            <div className="grid gap-3 sm:flex sm:flex-wrap sm:items-start sm:justify-between">
               <div>
                 <h2 className="section-title">Student timeline</h2>
                 <p className="mt-1 text-sm text-slate-600">A concise operational history for this student record.</p>
@@ -849,7 +849,7 @@ export default function StudentProfilePageFixed() {
             </div>
             {editingTimelineDates ? (
               <div className="mt-6 space-y-5">
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-4 lg:grid-cols-2">
                   <EditField label="Lead date">
                     <input
                       type="date"
@@ -882,7 +882,7 @@ export default function StudentProfilePageFixed() {
                     />
                   </EditField>
                 </div>
-                <div className="flex flex-wrap gap-3">
+                <div className="grid gap-3 sm:flex sm:flex-wrap">
                   <button type="button" className="button-primary" onClick={handleTimelineDateSave} disabled={savingTimelineDates}>
                     {savingTimelineDates ? "Saving..." : "Save dates"}
                   </button>
@@ -908,7 +908,7 @@ export default function StudentProfilePageFixed() {
             )}
           </section>
 
-          <section className="panel p-6">
+          <section className="panel p-4 sm:p-6">
             <h2 className="section-title">Payment history</h2>
             <div className="mt-5 space-y-4">
               {isPreEnrollment ? (

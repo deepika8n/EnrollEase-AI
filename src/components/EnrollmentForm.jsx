@@ -714,9 +714,9 @@ export default function EnrollmentForm({
 
   if (convertEnrollmentId && !isConvertMode) {
     return (
-      <section className="panel p-6">
+      <section className="panel p-4 sm:p-6">
         <p className="text-sm font-semibold text-brand-500">This enquiry could not be loaded for conversion.</p>
-        <div className="mt-4 flex flex-wrap gap-3">
+        <div className="mt-4 grid gap-3 sm:flex sm:flex-wrap">
           <button type="button" className="button-secondary" onClick={dismissForm}>
             Back
           </button>
@@ -728,13 +728,13 @@ export default function EnrollmentForm({
   return (
     <>
       {duplicateCandidate ? (
-        <section className="panel mb-6 p-6">
+        <section className="panel mb-6 p-4 sm:p-6">
           <p className="section-kicker">Duplicate detected</p>
           <h2 className="mt-3 text-lg font-semibold text-slate-950">An active student record already exists.</h2>
           <p className="mt-3 text-sm text-slate-600">
             {duplicateCandidate.student.full_name} already has an active record for {duplicateCandidate.course?.course_name || "the selected course"}.
           </p>
-          <div className="mt-5 flex flex-wrap gap-3">
+          <div className="mt-5 grid gap-3 sm:flex sm:flex-wrap">
             <button type="button" className="button-primary" onClick={() => navigate(`/students/${duplicateCandidate.student.id}`)}>
               Open Existing Record
             </button>
@@ -746,9 +746,9 @@ export default function EnrollmentForm({
       ) : null}
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <section className="panel p-6">
+        <section className="panel p-4 sm:p-6">
           <h2 className="section-title">Student Details</h2>
-          <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-6 grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
             <input
               name="student_code"
               placeholder="Custom student ID"
@@ -847,10 +847,10 @@ export default function EnrollmentForm({
           ) : null}
         </section>
 
-        <section className="panel p-6">
+        <section className="panel p-4 sm:p-6">
           <h2 className="section-title">Admission Details</h2>
           {isConvertMode ? (
-            <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+            <div className="mt-6 grid gap-4 lg:grid-cols-2 xl:grid-cols-5">
               <LabeledField label="Lead Date *">
                 <input
                   type="date"
@@ -903,7 +903,7 @@ export default function EnrollmentForm({
               </LabeledField>
             </div>
           ) : (
-            <div className="mt-6 grid gap-4 md:grid-cols-2">
+            <div className="mt-6 grid gap-4 lg:grid-cols-2">
               <LabeledField label="Enquiry Date *">
                 <input
                   type="date"
@@ -919,9 +919,9 @@ export default function EnrollmentForm({
 
         {isConvertMode ? (
           <>
-            <section className="panel p-6">
+            <section className="panel p-4 sm:p-6">
               <h2 className="section-title">Payment Details</h2>
-              <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="mt-6 grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
                 <LabeledField label="Payment Method *">
                   <select value={form.payment_method} onChange={(event) => updateForm("payment_method", event.target.value)} required>
                     {paymentMethods.filter((item) => item !== "Pending").map((method) => (
@@ -1027,10 +1027,10 @@ export default function EnrollmentForm({
               ) : null}
             </section>
 
-            <section className="panel p-6">
+            <section className="panel p-4 sm:p-6">
               <h2 className="section-title">Student Uploads</h2>
-              <div className="mt-6 grid gap-5 md:grid-cols-2">
-                <div className="flex min-h-[22rem] flex-col rounded-[24px] border border-dashed border-slate-300 bg-slate-50 p-5">
+              <div className="mt-6 grid gap-5 lg:grid-cols-2">
+                <div className="flex min-h-[18rem] min-w-0 flex-col rounded-[24px] border border-dashed border-slate-300 bg-slate-50 p-4 sm:min-h-[22rem] sm:p-5">
                   <div>
                     <p className="font-semibold text-slate-900">Student photo</p>
                     <p className="mt-1 text-sm text-slate-500">Upload PNG, JPG, JPEG, or PDF.</p>
@@ -1046,11 +1046,11 @@ export default function EnrollmentForm({
                     src={photoPreview}
                     alt="Student preview"
                     title="Student photo"
-                    className="mt-4 min-h-[220px] w-full flex-1 rounded-[24px] border border-slate-200 bg-white object-cover"
+                    className="mt-4 min-h-[180px] w-full flex-1 rounded-[24px] border border-slate-200 bg-white object-cover sm:min-h-[220px]"
                   />
                 </div>
 
-                <div className="flex min-h-[22rem] flex-col rounded-[24px] border border-dashed border-slate-300 bg-slate-50 p-5">
+                <div className="flex min-h-[18rem] min-w-0 flex-col rounded-[24px] border border-dashed border-slate-300 bg-slate-50 p-4 sm:min-h-[22rem] sm:p-5">
                   <div>
                     <p className="font-semibold text-slate-900">Aadhaar document</p>
                     <p className="mt-1 text-sm text-slate-500">Upload PNG, JPG, JPEG, or PDF.</p>
@@ -1067,13 +1067,13 @@ export default function EnrollmentForm({
                     alt="Aadhaar preview"
                     title="Aadhaar document"
                     enablePdfZoom
-                    className="mt-4 min-h-[260px] w-full flex-1"
+                    className="mt-4 min-h-[200px] w-full flex-1 sm:min-h-[260px]"
                   />
                 </div>
               </div>
             </section>
 
-            <section className="panel p-6">
+            <section className="panel p-4 sm:p-6">
               <h2 className="section-title">Notes</h2>
               <div className="mt-6">
                 <textarea
@@ -1088,7 +1088,7 @@ export default function EnrollmentForm({
           </>
         ) : null}
 
-        <div className="flex flex-wrap gap-3">
+        <div className="grid gap-3 sm:flex sm:flex-wrap">
           <button type="submit" className="button-primary" disabled={submitting}>
             {submitting ? "Saving..." : isConvertMode ? "Complete Enrollment" : "Save Enquiry"}
           </button>

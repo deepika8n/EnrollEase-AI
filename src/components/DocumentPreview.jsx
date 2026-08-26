@@ -9,7 +9,7 @@ const pdfZoomLevels = [100, 125, 150, 200, 250, 300];
 function PreviewShell({ children, className = "" }) {
   return (
     <div
-      className={`flex h-full min-h-[220px] w-full flex-col items-center justify-center gap-3 rounded-[24px] border border-slate-200 bg-white p-5 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] ${className}`.trim()}
+      className={`flex h-full min-h-[220px] w-full min-w-0 flex-col items-center justify-center gap-3 rounded-[24px] border border-slate-200 bg-white p-4 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] sm:p-5 ${className}`.trim()}
     >
       {children}
     </div>
@@ -75,7 +75,7 @@ function FallbackCard({ kind, fileName, className = "" }) {
 
 function NativePdfPreview({ src, title, className = "", interactive = false }) {
   return (
-    <div className={`overflow-hidden rounded-[24px] border border-slate-200 bg-white ${className}`.trim()}>
+    <div className={`min-w-0 overflow-hidden rounded-[24px] border border-slate-200 bg-white ${className}`.trim()}>
       <object
         data={src}
         type="application/pdf"
@@ -220,8 +220,8 @@ export default function DocumentPreview({ src, alt, title, fileName, className =
   if (sourceKind === "pdf") {
     if (enablePdfZoom) {
       return (
-        <div className={`flex h-full min-h-[260px] w-full flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white ${className}`.trim()}>
-          <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+        <div className={`flex h-full min-h-[260px] w-full min-w-0 flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white ${className}`.trim()}>
+          <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm font-medium text-slate-500">PDF preview</p>
             <button
               type="button"
@@ -234,7 +234,7 @@ export default function DocumentPreview({ src, alt, title, fileName, className =
           <iframe
             src={src}
             title={title || alt || displayName}
-            className="min-h-0 flex-1 w-full bg-white"
+            className="min-h-0 w-full flex-1 bg-white"
           />
         </div>
       );
@@ -251,10 +251,10 @@ export default function DocumentPreview({ src, alt, title, fileName, className =
     if (pdfStatus === "ready" && pdfThumbnail) {
       if (enablePdfZoom) {
         return (
-          <div className={`flex h-full min-h-[260px] w-full flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white ${className}`.trim()}>
-            <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+          <div className={`flex h-full min-h-[260px] w-full min-w-0 flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white ${className}`.trim()}>
+            <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm font-medium text-slate-500">Zoom and scroll to inspect the Aadhaar PDF.</p>
-              <div className="flex items-center gap-2">
+              <div className="grid grid-cols-3 gap-2 sm:flex sm:items-center">
                 <button
                   type="button"
                   className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-600 disabled:cursor-not-allowed disabled:opacity-40"

@@ -5,7 +5,7 @@ export default function ToastStack() {
   const { notifications } = useApp();
 
   return (
-    <div className="fixed right-4 top-4 z-50 flex w-full max-w-sm flex-col gap-3">
+    <div className="fixed left-3 right-3 top-3 z-50 flex max-w-sm flex-col gap-3 sm:left-auto sm:right-4 sm:top-4 sm:w-full">
       {notifications.map((item) => (
         <div
           key={item.id}
@@ -16,14 +16,14 @@ export default function ToastStack() {
               : "border-gold-200 bg-white/95",
           )}
         >
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             <span
               className={clsx(
                 "h-2.5 w-2.5 rounded-full",
                 item.type === "success" ? "bg-accent-500" : "bg-gold-300",
               )}
             />
-            <p className="font-semibold text-slate-900">{item.title}</p>
+            <p className="min-w-0 break-words font-semibold text-slate-900">{item.title}</p>
           </div>
         </div>
       ))}
