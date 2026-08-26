@@ -429,16 +429,17 @@ export default function LandingPageSimple() {
       <div className="pointer-events-none absolute bottom-[-8rem] left-[22%] h-[18rem] w-[18rem] rounded-full bg-accent-100/25 blur-[140px]" />
 
       <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/78 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:py-5 md:px-8 lg:px-12">
+        <div className="hide-scrollbar overflow-x-auto">
+        <div className="mx-auto flex min-w-[760px] max-w-7xl items-center justify-between gap-3 px-4 py-5 md:px-8 lg:px-12">
           <BrandLogo
             size="sm"
             subtitle="Admissions OS"
             className="gap-4"
-            iconClassName="h-11 w-11 rounded-[16px] shadow-[0_16px_30px_rgba(11,53,88,0.12)] sm:h-[3.15rem] sm:w-[3.15rem] sm:rounded-[18px]"
-            wordmarkClassName="text-[1.55rem] tracking-[-0.03em] sm:text-[1.95rem] sm:tracking-[-0.055em]"
-            subtitleClassName="text-[10px] tracking-[0.18em] text-brand-500/72 sm:text-[11px] sm:tracking-[0.28em]"
+            iconClassName="h-[3.15rem] w-[3.15rem] rounded-[18px] shadow-[0_16px_30px_rgba(11,53,88,0.12)]"
+            wordmarkClassName="text-[1.95rem] tracking-[-0.055em]"
+            subtitleClassName="text-[11px] tracking-[0.28em] text-brand-500/72"
           />
-          <div className="grid w-full grid-cols-2 gap-3 sm:flex sm:w-auto sm:items-center">
+          <div className="flex w-auto items-center gap-3">
             <button
               type="button"
               onClick={() => setShowAdminAlert(true)}
@@ -454,15 +455,17 @@ export default function LandingPageSimple() {
             </Link>
           </div>
         </div>
+        </div>
       </header>
 
       <main id="top" className="mx-auto max-w-7xl px-4 py-8 md:px-8 lg:px-12 lg:py-16">
-        <section className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(420px,540px)] lg:items-center">
+        <div className="hide-scrollbar -mx-1 overflow-x-auto px-1">
+        <section className="grid min-w-[1040px] grid-cols-[minmax(0,1fr)_minmax(420px,540px)] items-center gap-8 lg:min-w-0">
           <div className="fade-in-up max-w-4xl">
             <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-brand-500/72">ENROLLEASE  AI</p>
             <h1
               aria-label="Smart Admissions For Students And Admins"
-              className={`hero-heading-live mt-4 min-h-[5.4em] max-w-3xl font-display text-[2.45rem] font-semibold leading-tight tracking-[-0.02em] text-brand-900 sm:text-5xl md:min-h-[5.9em] md:text-6xl md:leading-[0.98] md:tracking-[-0.06em] ${headingFading ? "is-fading" : ""}`}
+              className={`hero-heading-live mt-4 min-h-[5.9em] max-w-3xl font-display text-6xl font-semibold leading-[0.98] tracking-[-0.06em] text-brand-900 ${headingFading ? "is-fading" : ""}`}
             >
               {heroWords.map((word, index) => (
                 <span
@@ -474,12 +477,12 @@ export default function LandingPageSimple() {
               ))}
             </h1>
             {subtitleVisible ? (
-              <p className="fade-in-up mt-6 max-w-2xl text-base leading-8 text-slate-600 md:text-lg">
+              <p className="fade-in-up mt-6 max-w-2xl text-lg leading-8 text-slate-600">
                 Students can enquire with ease, while admins manage leads, admissions, follow-ups, and payments in one place.
               </p>
             ) : null}
             {ctaVisible ? (
-              <div className="fade-in-up mt-9 grid gap-3 sm:flex sm:flex-wrap sm:gap-4">
+              <div className="fade-in-up mt-9 flex flex-wrap gap-4">
                 <Link
                   to="/enquiry"
                   className="inline-flex items-center justify-center rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-brand-500 shadow-[0_18px_36px_rgba(11,53,88,0.08)] transition duration-200 hover:-translate-y-0.5 hover:border-brand-300 focus:outline-none focus:ring-4 focus:ring-accent-100"
@@ -496,8 +499,8 @@ export default function LandingPageSimple() {
             ) : null}
           </div>
 
-          <div className="relative flex items-center justify-center lg:justify-end">
-            <div className="relative h-[260px] w-full max-w-[880px] overflow-hidden rounded-[24px] border border-sky-100 bg-[linear-gradient(135deg,rgba(177,217,255,0.32),rgba(255,255,255,0.84),rgba(209,244,255,0.48))] shadow-[0_32px_80px_rgba(148,163,184,0.13)] sm:h-[360px] sm:rounded-[36px] lg:h-[420px]">
+          <div className="relative flex items-center justify-end">
+            <div className="relative h-[420px] w-full max-w-[880px] overflow-hidden rounded-[36px] border border-sky-100 bg-[linear-gradient(135deg,rgba(177,217,255,0.32),rgba(255,255,255,0.84),rgba(209,244,255,0.48))] shadow-[0_32px_80px_rgba(148,163,184,0.13)]">
               <div
                 className="flex h-full w-full transition-transform duration-700 ease-out"
                 style={{ transform: `translate3d(-${activeHeroSlide * 100}%, 0, 0)` }}
@@ -515,15 +518,17 @@ export default function LandingPageSimple() {
             </div>
           </div>
         </section>
+        </div>
 
         <section id="courses" className="mt-16">
-          <div className="grid gap-10 lg:grid-cols-[1fr_1.1fr] lg:items-center">
+          <div className="hide-scrollbar -mx-1 overflow-x-auto px-1">
+          <div className="grid min-w-[1040px] grid-cols-[1fr_1.1fr] items-center gap-10 lg:min-w-0">
             <div className="max-w-2xl">
-              <h2 className="font-display text-4xl font-semibold leading-[1.18] tracking-[-0.02em] text-slate-950 md:text-6xl md:tracking-[-0.05em]">
+              <h2 className="font-display text-6xl font-semibold leading-[1.18] tracking-[-0.05em] text-slate-950">
                 <span className="certisured-heading-glow block">Be more than Certified</span>
                 <span className="certisured-heading-glow mt-3 block">Be Certisured</span>
               </h2>
-              <p className="mt-10 max-w-xl text-[1.1rem] leading-[1.75] tracking-[0.02em] text-slate-800 md:text-[1.25rem]">
+              <p className="mt-10 max-w-xl text-[1.25rem] leading-[1.75] tracking-[0.02em] text-slate-800">
                 Ranked number 1 for offline and online courses on advanced technology across many websites.
               </p>
             </div>
@@ -531,6 +536,7 @@ export default function LandingPageSimple() {
             <div className="certisured-illustration-wrap">
               <CertisuredGrowthIllustration />
             </div>
+          </div>
           </div>
         </section>
 
@@ -542,12 +548,13 @@ export default function LandingPageSimple() {
             </h2>
           </div>
 
-          <section className="mt-8 overflow-hidden rounded-[30px] border border-cyan-100 bg-[linear-gradient(145deg,#f0fdfa_0%,#ffffff_48%,#eff6ff_100%)] p-5 shadow-[0_24px_56px_rgba(8,145,178,0.10)] md:p-7">
-            <div className="grid gap-7 lg:grid-cols-[0.9fr_1.1fr] lg:items-start">
+          <section className="mt-8 overflow-hidden rounded-[30px] border border-cyan-100 bg-[linear-gradient(145deg,#f0fdfa_0%,#ffffff_48%,#eff6ff_100%)] p-0 shadow-[0_24px_56px_rgba(8,145,178,0.10)]">
+            <div className="hide-scrollbar overflow-x-auto">
+            <div className="grid min-w-[1040px] grid-cols-[0.9fr_1.1fr] items-start gap-7 p-7 lg:min-w-0">
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-cyan-700">EnrollEase AI Advisor</p>
-                <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-center">
-                  <h3 className="font-display text-3xl font-semibold text-slate-950 md:text-4xl">
+                <div className="mt-3 flex items-center gap-4">
+                  <h3 className="font-display text-4xl font-semibold text-slate-950">
                     Not sure which course to choose?
                   </h3>
                   <img
@@ -565,8 +572,8 @@ export default function LandingPageSimple() {
                 </blockquote>
               </div>
 
-              <form onSubmit={handleCourseSuggestion} className="rounded-[26px] border border-white/90 bg-white/88 p-4 shadow-[0_18px_42px_rgba(15,23,42,0.08)] md:p-5">
-                <div className="grid gap-3 lg:grid-cols-3">
+              <form onSubmit={handleCourseSuggestion} className="rounded-[26px] border border-white/90 bg-white/88 p-5 shadow-[0_18px_42px_rgba(15,23,42,0.08)]">
+                <div className="grid grid-cols-3 gap-3">
                   <input
                     value={advisorForm.education}
                     onChange={(event) => updateAdvisorForm("education", event.target.value)}
@@ -589,7 +596,7 @@ export default function LandingPageSimple() {
                     className="border-sky-100 bg-sky-50/60"
                   />
                 </div>
-                <div className="mt-4 grid gap-3 sm:flex sm:flex-wrap">
+                <div className="mt-4 flex flex-wrap gap-3">
                   <button type="submit" className="button-primary" disabled={advisorThinking}>
                     {advisorThinking ? "Finding best fit..." : "Suggest my course"}
                   </button>
@@ -638,16 +645,18 @@ export default function LandingPageSimple() {
                     </div>
                     <p className="mt-4 text-sm leading-7 text-slate-600">{courseSuggestion.reason}</p>
                     <p className="mt-2 text-sm font-semibold leading-7 text-slate-800">{courseSuggestion.nextStep}</p>
-                    <Link to="/enquiry" className="mt-5 inline-flex w-full items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#0891b2,#10b981)] px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(8,145,178,0.18)] transition duration-200 hover:-translate-y-0.5 sm:w-auto">
+                    <Link to="/enquiry" className="mt-5 inline-flex w-auto items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#0891b2,#10b981)] px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(8,145,178,0.18)] transition duration-200 hover:-translate-y-0.5">
                       Enquire for this course
                     </Link>
                   </div>
                 ) : null}
               </form>
             </div>
+            </div>
           </section>
 
-          <div className="mt-8 grid gap-3 lg:grid-cols-3 xl:grid-cols-5">
+          <div className="hide-scrollbar -mx-1 mt-8 overflow-x-auto px-1">
+          <div className="grid min-w-[1180px] grid-cols-5 gap-3 xl:min-w-0">
             {courses.map((course, index) => {
               const flipped = Boolean(flippedCourses[course.key]);
               const theme = courseCardThemes[index % courseCardThemes.length];
@@ -698,6 +707,7 @@ export default function LandingPageSimple() {
                 </button>
               );
             })}
+          </div>
           </div>
         </section>
 
