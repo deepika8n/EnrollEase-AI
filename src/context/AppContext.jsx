@@ -40,7 +40,8 @@ const LOCAL_DB_KEY = "enrollease-demo-db-v3";
 const LOCAL_SESSION_KEY = "enrollease-demo-session-v3";
 const SUPABASE_SHADOW_KEY = "enrollease-supabase-shadow-v2";
 const REMOTE_STATE_CACHE_KEY = "enrollease-remote-state-v3";
-const PAYMENT_REMINDER_LOCK_KEY = "enrollease-payment-reminder-locks-v1";
+// v1 could contain locks for reminders that the automatic caller never sent.
+const PAYMENT_REMINDER_LOCK_KEY = "enrollease-payment-reminder-locks-v2";
 const LEGACY_BROWSER_CACHE_KEYS = [
   "enrollease-remote-state-v1",
   "enrollease-remote-state-v2",
@@ -4521,7 +4522,7 @@ export function AppProvider({ children }) {
     const reminderDate = toIsoDate(options.paymentDate || getTodayIsoDate());
 
     if (emailVariant === "due_reminder") {
-      const alreadyLoggedToday = hasEmailLogOnDate(
+      const alreadyLoggedToday = hasSuccessfulEmailOnDate(
         state.emailLogs,
         enrollmentId,
         isPaymentReminderEmailLog,
@@ -4543,15 +4544,23 @@ export function AppProvider({ children }) {
     }
 
     const sentAt = new Date().toISOString();
-    const emailResult = await sendPaymentStatusEmail({
-      enrollment: enrollmentRecord,
-      student: studentRecord,
-      course: options.course || courseRecord,
-      relatedCourses,
-      paidAmount: options.paidAmount,
-      paymentDate: options.paymentDate || enrollmentRecord.last_payment_date || "",
-      emailVariant,
-    });
+    let emailResult;
+    try {
+      emailResult = await sendPaymentStatusEmail({
+        enrollment: enrollmentRecord,
+        student: studentRecord,
+        course: options.course || courseRecord,
+        relatedCourses,
+        paidAmount: options.paidAmount,
+        paymentDate: options.paymentDate || enrollmentRecord.last_payment_date || "",
+        emailVariant,
+      });
+    } catch (error) {
+      if (emailVariant === "due_reminder") {
+        clearPaymentReminderLock(enrollmentId, reminderDate);
+      }
+      throw error;
+    }
 
     if (!emailResult.ok) {
       if (emailVariant === "due_reminder") {
@@ -5052,7 +5061,6 @@ export function AppProvider({ children }) {
         }
 
         autoEmailTracker.current.paymentReminder.add(paymentReminderKey);
-        setPaymentReminderLock(record.enrollment.id, reminderDate);
         try {
           await sendPaymentEmail(record.enrollment.id, {
             enrollment: record.enrollment,

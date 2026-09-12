@@ -788,7 +788,7 @@ export async function sendPaymentStatusEmail({
   const logType = emailVariant === "due_reminder" ? "EMI Due Reminder" : "Payment Update";
 
   try {
-    await sendDirectEmail({
+    const delivery = await sendDirectEmail({
       to: normalizeEmailAddress(student?.email || ""),
       subject,
       html,
@@ -801,7 +801,7 @@ export async function sendPaymentStatusEmail({
     return {
       ok: true,
       status: "Sent",
-      logged: true,
+      logged: Boolean(delivery.logged),
       message: "Payment email sent successfully.",
       subject,
       sentAt,
