@@ -9,7 +9,7 @@ const empty = { authUser: null, currentUser: null, students: [], enrollments: []
 const user = { id: "account-a", email: "a@example.test" };
 const remote = (account = user, students = [{ id: "real-student" }]) => ({ authUser: account, currentUser: { user_id: account.id }, students, enrollments: [] });
 
-function harness(load, initial = empty) {
+function harness(load, initial = empty, timeoutMs = 1000) {
   let state = structuredClone(initial);
   const context = vm.createContext({
     hasSupabaseEnv: true, supabase: {}, defaultState: empty,
@@ -17,10 +17,14 @@ function harness(load, initial = empty) {
     sessionGeneration: { current: 0 },
     setState(update) { state = update(state); },
     loadVerifiedRemoteState: load,
+    loadOptionalRemoteState: async () => ({ optionalDataReady: true }),
+    SUPABASE_BOOT_TIMEOUT_MS: timeoutMs,
+    setTimeout, clearTimeout, console,
     readRemoteStateCache() { assert.fail("Live login must not read cached samples"); },
     buildSamplePortalState() { assert.fail("Live login must never generate samples"); },
   });
-  const refresh = vm.runInContext(`${refreshSource}\nrefreshState;`, context);
+  const timeoutSource = source.slice(source.indexOf("function withTimeout("), source.indexOf("function isTimeoutError("));
+  const refresh = vm.runInContext(`${timeoutSource}\n${refreshSource}\nrefreshState;`, context);
   return { refresh, state: () => state };
 }
 
@@ -44,6 +48,44 @@ test("a successful empty database stays empty and removes deleted records", asyn
   await h.refresh(user);
   assert.equal(h.state().students.length, 0);
   assert.equal(h.state().dataError, null);
+});
+
+test("same-account background refresh keeps the welcome/dashboard mounted", async () => {
+  let finish;
+  const h = harness(() => new Promise(resolve => { finish = resolve; }), { ...empty, ...remote(), loading: false });
+  const pending = h.refresh(user);
+  assert.equal(h.state().loading, false);
+  assert.equal(h.state().refreshing, true);
+  assert.equal(h.state().students[0].id, "real-student");
+  finish(remote());
+  await pending;
+  assert.equal(h.state().refreshing, false);
+});
+
+test("a hung load exits the loading screen and exposes retry", async () => {
+  const h = harness(() => new Promise(() => {}), empty, 15);
+  await assert.rejects(h.refresh(user), /timed out/);
+  assert.equal(h.state().loading, false);
+  assert.equal(h.state().refreshing, false);
+  assert.ok(h.state().dataError);
+});
+
+test("core table groups start together and do not wait for optional history", async () => {
+  const start = source.indexOf("async function loadFullRemoteState(");
+  const end = source.indexOf("async function loadVerifiedRemoteState", start);
+  let finishCritical;
+  let finishDeferred;
+  const load = vm.runInNewContext(`${source.slice(start, end)}\nloadFullRemoteState;`, {
+    loadCriticalRemoteState: () => new Promise(resolve => { finishCritical = resolve; }),
+    loadDeferredRemoteState: () => new Promise(resolve => { finishDeferred = resolve; }),
+  });
+  const pending = load(user);
+  assert.equal(typeof finishCritical, "function");
+  assert.equal(typeof finishDeferred, "function");
+  finishCritical({ currentUser: user });
+  finishDeferred({ students: [{ id: "current" }] });
+  const state = await pending;
+  assert.equal(state.students[0].id, "current");
 });
 
 test("failed refresh reports an error without replacing records with zeros; retry recovers", async () => {

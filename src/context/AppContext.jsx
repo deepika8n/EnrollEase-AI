@@ -195,6 +195,8 @@ const defaultState = {
   notifications: [],
   loading: true,
   dataError: null,
+  refreshing: false,
+  optionalDataReady: false,
 };
 
 const AppContext = createContext(null);
@@ -2067,6 +2069,23 @@ async function loadDeferredRemoteState() {
       }
     }),
   );
+
+  const {
+    students = [],
+    enrollments = [],
+    documents = [],
+  } = Object.fromEntries(deferredResults);
+  const mergedEnrollments = dedupeRecordsById(enrollments);
+  const mergedDocuments = dedupeRecordsById(documents);
+
+  return {
+    students: dedupeRecordsById(students),
+    enrollments: mergedEnrollments,
+    documents: normalizeDocumentsForDisplay(mergedDocuments, mergedEnrollments),
+  };
+}
+
+async function loadOptionalRemoteState() {
   const optionalResults = await Promise.all(
     optionalPortalTables.map(async ({ key, table, queryBuilder, fallbackQueryBuilder }) => {
       try {
@@ -2082,30 +2101,23 @@ async function loadDeferredRemoteState() {
         ];
       } catch (error) {
         console.warn(`Optional Supabase load failed for ${table}:`, error);
-        return [key, []];
+        return [key, null];
       }
     }),
   );
 
-  const {
-    students = [],
-    enrollments = [],
-    documents = [],
-  } = Object.fromEntries(deferredResults);
-  const mergedEnrollments = dedupeRecordsById(enrollments);
-  const mergedDocuments = dedupeRecordsById(documents);
-
+  const loaded = Object.fromEntries(optionalResults);
   return {
-    students: dedupeRecordsById(students),
-    enrollments: mergedEnrollments,
-    documents: normalizeDocumentsForDisplay(mergedDocuments, mergedEnrollments),
-    ...buildOptionalState(Object.fromEntries(optionalResults)),
+    ...Object.fromEntries(Object.entries(loaded).filter(([, value]) => value !== null)),
+    optionalDataReady: optionalResults.every(([, value]) => value !== null),
   };
 }
 
 async function loadFullRemoteState(sessionUser) {
-  const criticalState = await loadCriticalRemoteState(sessionUser);
-  const deferredState = await loadDeferredRemoteState();
+  const [criticalState, deferredState] = await Promise.all([
+    loadCriticalRemoteState(sessionUser),
+    loadDeferredRemoteState(),
+  ]);
 
   return {
     ...criticalState,
@@ -2370,26 +2382,39 @@ export function AppProvider({ children }) {
       ...(prev.authUser?.id === refreshKey ? prev : defaultState),
       authUser: sessionUser,
       currentUser: prev.authUser?.id === refreshKey ? prev.currentUser : null,
-      loading: true,
+      loading: !(prev.authUser?.id === refreshKey && prev.currentUser && !prev.dataError),
+      refreshing: true,
       dataError: null,
       notifications: prev.notifications,
     }));
     const refreshPromise = (async () => {
       try {
-        const remoteState = await loadVerifiedRemoteState(sessionUser);
+        const remoteState = await withTimeout(
+          loadVerifiedRemoteState(sessionUser), SUPABASE_BOOT_TIMEOUT_MS, "Loading your current data",
+        );
         if (!isCurrent()) return;
         setState((prev) => isCurrent() ? ({
           ...defaultState,
           ...remoteState,
+          emailLogs: prev.authUser?.id === refreshKey ? prev.emailLogs : [],
+          auditLogs: prev.authUser?.id === refreshKey ? prev.auditLogs : [],
+          optionalDataReady: false,
+          refreshing: false,
           loading: false,
           dataError: null,
           notifications: prev.notifications,
         }) : prev);
+        // Email/audit history must not hold the admissions screen open.
+        void loadOptionalRemoteState().then((optionalState) => {
+          if (!isCurrent()) return;
+          setState((prev) => isCurrent() ? { ...prev, ...optionalState } : prev);
+        }).catch((error) => console.warn("History refresh failed:", error));
       } catch (error) {
         if (!isCurrent()) return;
         setState((prev) => isCurrent() ? ({
           ...prev,
           loading: false,
+          refreshing: false,
           dataError: "Your current data could not be loaded. Check your connection and retry.",
         }) : prev);
         throw error;
@@ -2550,7 +2575,6 @@ export function AppProvider({ children }) {
     window.addEventListener("focus", handleWindowFocus);
     document.addEventListener("visibilitychange", handleVisibilityChange);
     void bootstrapProjectState();
-    void syncPortalState();
 
     return () => {
       window.clearInterval(intervalId);
@@ -4710,7 +4734,7 @@ export function AppProvider({ children }) {
   }, [portalRecords]);
 
   useEffect(() => {
-    if (state.loading || state.dataError) {
+    if (state.loading || state.dataError || (hasSupabaseEnv && !state.optionalDataReady)) {
       return;
     }
 
@@ -4876,7 +4900,7 @@ export function AppProvider({ children }) {
         }
       }
     })();
-  }, [automationTick, portalRecords, serverSideAutomationsEnabled, state.emailLogs, state.loading, state.dataError]);
+  }, [automationTick, portalRecords, serverSideAutomationsEnabled, state.emailLogs, state.loading, state.dataError, state.optionalDataReady]);
 
   const value = useMemo(
     () => ({
