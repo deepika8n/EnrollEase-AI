@@ -1,3 +1,4 @@
+import { canSendStudentEnrollmentForm } from "../utils/studentFormEligibility";
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { createDemoPortalState } from "../data/demoPortal";
 import { canonicalCourseSeeds, decorateCourseRecord, findCourseByReference, normalizeBatchName } from "../data/courseCatalog";
@@ -4142,8 +4143,8 @@ export function AppProvider({ children }) {
       throw new Error("Student self-fill forms need Supabase to be configured.");
     }
 
-    if (!isEnquiryStage(enrollmentRecord.pipeline_stage)) {
-      throw new Error("Only enquiry records can be sent to the student form.");
+    if (!canSendStudentEnrollmentForm(enrollmentRecord)) {
+      throw new Error("Forms can be sent to enquiries and dropped enquiries that have not already enrolled or recorded payments.");
     }
 
     if (!isValidStudentEmailAddress(studentRecord.email)) {
@@ -4203,7 +4204,7 @@ export function AppProvider({ children }) {
         logType: "Student Enrollment Form",
         student: studentRecord,
         course: courseRecord || enrollmentRecord.course_name || "",
-        currentStage: "Enquiry",
+        currentStage: inferCurrentStage(enrollmentRecord),
         subject: emailMessage.subject,
         html: emailMessage.html,
         text: emailMessage.text,

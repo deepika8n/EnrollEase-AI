@@ -1,3 +1,4 @@
+import SendEnrollmentFormButton from "../components/SendEnrollmentFormButton";
 import { useEffect, useMemo, useState } from "react";
 import {
   ArcElement,
@@ -598,7 +599,8 @@ export default function DashboardHoverPage() {
                       />
                     </div>
 
-                    <div className="mt-3 flex justify-end">
+                    <div className="mt-3 flex flex-wrap items-start justify-between gap-3">
+                      <SendEnrollmentFormButton key={enrollmentId} record={record} />
                       <button
                         type="button"
                         onClick={() => handleSaveDropoutReason(record)}

@@ -676,6 +676,7 @@ Deno.serve(async (request) => {
       ]);
       const nextEnrollmentPayload = {
         pipeline_stage: "Enrolled",
+        dropout_reason: null,
         course_name: sanitizeString(enrollmentPatch.course_name || enrollment.course_name || enrollment.courses?.course_name || ""),
         batch,
         lead_date: leadDate,

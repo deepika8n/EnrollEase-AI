@@ -1,3 +1,4 @@
+import SendEnrollmentFormButton from "../components/SendEnrollmentFormButton";
 import { useEffect, useMemo, useState } from "react";
 import AppShell from "../components/AppShell";
 import PageHeader from "../components/PageHeader";
@@ -419,6 +420,9 @@ export default function AiCopilotPage() {
                       <p className="mt-1 break-words text-sm text-slate-600">
                         {selectedRecord.course?.course_name || selectedRecord.enrollment?.course_name || "Course pending"} | {selectedRecord.currentStage || "Unknown"} | {normalizeBatchName(selectedRecord.enrollment?.batch) || "Batch pending"}
                       </p>
+                      <div className="mt-4">
+                        <SendEnrollmentFormButton key={selectedRecord.id} record={selectedRecord} />
+                      </div>
                       {selectedUrgency ? (
                         <span className={`mt-3 inline-flex rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] shadow-[0_8px_20px_rgba(148,163,184,0.12)] ${urgencyBadgeClass(selectedUrgency.level)}`}>
                           {selectedUrgency.level}

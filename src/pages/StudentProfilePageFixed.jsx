@@ -1,3 +1,4 @@
+import SendEnrollmentFormButton from "../components/SendEnrollmentFormButton";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import AppShell from "../components/AppShell";
@@ -437,6 +438,7 @@ export default function StudentProfilePageFixed() {
         title={student.full_name}
         description="A complete branded view of personal details, payment progress, and student history."
         actions={[
+          <SendEnrollmentFormButton key={record.enrollment.id} record={record} />,
           <button
             key="edit"
             type="button"
