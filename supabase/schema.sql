@@ -78,6 +78,12 @@ create table if not exists enrollments (
   created_at timestamptz default now()
 );
 
+-- CREATE TABLE IF NOT EXISTS does not upgrade an existing installation.
+alter table public.enrollments add column if not exists original_fee numeric(12, 2) default 0;
+alter table public.enrollments add column if not exists discount_type text;
+alter table public.enrollments add column if not exists discount_value numeric(12, 2) default 0;
+alter table public.enrollments add column if not exists discount_amount numeric(12, 2) default 0;
+
 alter table public.enrollments add column if not exists student_form_status text default 'Not Sent';
 alter table public.enrollments add column if not exists student_form_token_hash text;
 alter table public.enrollments add column if not exists student_form_sent_at timestamptz;

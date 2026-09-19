@@ -509,6 +509,16 @@ async function saveStudentWithUniqueCode({ adminClient, recordId, payload }: {
   return { error: { message: "Student ID allocation is busy. Please click Complete Enrollment again." } };
 }
 
+async function verifySubmissionSchema(adminClient: SupabaseClientAny, payloads: Record<string, Record<string, unknown>>) {
+  await Promise.all(Object.entries(payloads).map(async ([table, payload]) => {
+    const { error } = await adminClient.from(table).select(Object.keys(payload).join(",")).limit(0);
+    if (error) {
+      console.error(`Enrollment schema preflight failed for ${table}:`, error);
+      throw new Error("Enrollment storage is temporarily unavailable. Your form has not been submitted. Please contact admissions or try again shortly.");
+    }
+  }));
+}
+
 async function validateRequest(adminClient: SupabaseClientAny, enrollmentId = "", token = "") {
   const { data, error } = await adminClient
     .from("enrollments")
@@ -679,15 +689,6 @@ Deno.serve(async (request) => {
         notes: sanitizeString((enrollment.students as StudentRecord | null)?.notes || ""),
       });
 
-      const { error: studentUpdateError } = await saveStudentWithUniqueCode({
-        adminClient,
-        recordId: String(enrollment.student_id || ""),
-        payload: nextStudentPayload,
-      });
-      if (studentUpdateError) {
-        return response(500, { error: studentUpdateError.message || "Unable to update the student profile." });
-      }
-
       const currentRemarks = sanitizeString(enrollment.remarks);
       const submittedRemarks = sanitizeString(enrollmentPatch.remarks);
       const mergedRemarks = mergeUniqueNoteSegments([
@@ -732,6 +733,30 @@ Deno.serve(async (request) => {
         student_form_token_hash: null,
       };
 
+      const documentPayload = documents.map((item: SubmissionDocument) => ({
+        enrollment_id: enrollmentId,
+        document_type: sanitizeString(item.document_type),
+        file_url: String(item.file_url || ""),
+        verification_status: "Pending",
+        remarks: sanitizeString(item.remarks) || "Student self-submitted document",
+      }));
+      // Validate every write shape before saving any part of the submission.
+      await verifySubmissionSchema(adminClient, {
+        students: { ...nextStudentPayload, student_code: "" },
+        enrollments: nextEnrollmentPayload,
+        documents: documentPayload[0],
+        email_logs: { enrollment_id: "", email_type: "", status: "", sent_at: "" },
+      });
+
+      const { error: studentUpdateError } = await saveStudentWithUniqueCode({
+        adminClient,
+        recordId: String(enrollment.student_id || ""),
+        payload: nextStudentPayload,
+      });
+      if (studentUpdateError) {
+        return response(500, { error: studentUpdateError.message || "Unable to update the student profile." });
+      }
+
       const { error: enrollmentUpdateError } = await adminClient
         .from("enrollments")
         .update(nextEnrollmentPayload)
@@ -740,13 +765,6 @@ Deno.serve(async (request) => {
         return response(500, { error: enrollmentUpdateError.message || "Unable to update the enrollment record." });
       }
 
-      const documentPayload = documents.map((item: SubmissionDocument) => ({
-        enrollment_id: enrollmentId,
-        document_type: sanitizeString(item.document_type),
-        file_url: String(item.file_url || ""),
-        verification_status: "Pending",
-        remarks: sanitizeString(item.remarks) || "Student self-submitted document",
-      }));
       const { error: documentError } = await adminClient
         .from("documents")
         .insert(documentPayload);

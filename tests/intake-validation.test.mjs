@@ -8,6 +8,28 @@ import { toIsoDate } from "../src/utils/dateMath.js";
 import { getEnrollmentTimelineValidationMessage } from "../src/utils/enrollmentDateValidation.js";
 const source = readFileSync(new URL("../supabase/functions/student-intake/index.ts", import.meta.url), "utf8");
 const helpers = source.slice(0, source.indexOf("Deno.serve(")).replace(/^import .*;\r?\n/gm, "");
+const verifySchema = vm.runInNewContext(stripTypeScriptTypes(`${helpers}\nverifySubmissionSchema;`), { console: { error() {} } });
+
+test("submission schema preflight checks actual payload keys without reading or writing records", async () => {
+  const checks = [];
+  const client = { from(table) { return { select(columns) { return { async limit(count) {
+    assert.equal(count, 0);
+    checks.push({ table, columns });
+    return { error: null };
+  } }; } }; } };
+  await verifySchema(client, { enrollments: { original_fee: 100, discount_amount: 10 }, documents: { file_url: "test" } });
+  assert.deepEqual(checks, [{ table: "enrollments", columns: "original_fee,discount_amount" }, { table: "documents", columns: "file_url" }]);
+});
+
+test("missing schema fields stop submission before student or enrollment writes", async () => {
+  const client = { from() { return { select() { return { async limit() {
+    return { error: { code: "PGRST204", message: "Missing discount_amount" } };
+  } }; } }; } };
+  await assert.rejects(verifySchema(client, { enrollments: { discount_amount: 10 } }), /Your form has not been submitted/);
+  const preflight = source.indexOf("      await verifySubmissionSchema(");
+  assert.ok(preflight < source.indexOf("      const { error: studentUpdateError }"));
+  assert.ok(preflight < source.indexOf("      const { error: enrollmentUpdateError }"));
+});
 const start = source.indexOf("      const indiaToday =");
 const end = source.indexOf("      const nextStudentPayload", start);
 assert.ok(start > 0 && end > start);
