@@ -55,18 +55,7 @@ export function getNextStudentCode(existingCodes = [], fallbackPrefix = "CT") {
   return `${latestCode.prefix}${nextNumericValue}`;
 }
 
-export function getNextEnrolledStudentCode({ students = [], enrollments = [] } = {}) {
-  const enrolledStudentIds = new Set(
-    enrollments
-      .filter((item) => String(item?.pipeline_stage || "").trim().toLowerCase() === "enrolled")
-      .map((item) => item.student_id)
-      .filter(Boolean),
-  );
-
-  const existingCodes = students
-    .filter((student) => enrolledStudentIds.has(student.id))
-    .map((student) => student.student_code)
-    .filter(Boolean);
-
-  return getNextStudentCode(existingCodes);
+export function getNextEnrolledStudentCode({ students = [] } = {}) {
+  // Student codes remain reserved even when a student is an enquiry or dropout.
+  return getNextStudentCode(students.map((student) => student.student_code).filter(Boolean));
 }

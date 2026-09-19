@@ -468,6 +468,47 @@ function getNextStudentCode(existingCodes: string[] = [], fallbackPrefix = "CT")
   return `${latest.prefix}${String(latest.numericValue + 1).padStart(latest.numericPart.length, "0")}`;
 }
 
+// The unique index covers every student, including enquiries and dropouts.
+async function loadStudentCodes(adminClient: SupabaseClientAny) {
+  const rows: Array<{ id: string; student_code?: string | null }> = [];
+  const pageSize = 500;
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await adminClient.from("students")
+      .select("id, student_code").order("id", { ascending: true }).range(offset, offset + pageSize - 1);
+    if (error) throw new Error("Unable to check student IDs. Please try submitting again.");
+    rows.push(...(data || []));
+    if (!data || data.length < pageSize) return rows;
+  }
+}
+
+async function saveStudentWithUniqueCode({ adminClient, recordId, payload }: {
+  adminClient: SupabaseClientAny;
+  recordId: string;
+  payload: Record<string, unknown>;
+}) {
+  const collidedCodes: string[] = [];
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const students = await loadStudentCodes(adminClient);
+    const current = students.find((student) => student.id === recordId);
+    if (!current) return { error: { message: "Student record was not found. Please contact admissions." } };
+    const existingCode = String(current.student_code || "").trim();
+    const studentCode = existingCode || getNextStudentCode([
+      ...students.map((student) => String(student.student_code || "").trim()).filter(Boolean),
+      ...collidedCodes,
+    ]);
+    const result = await updateTableWithSchemaRetry({
+      adminClient, tableName: "students", recordId,
+      payload: { ...payload, student_code: studentCode },
+    });
+    if (!result.error) return result;
+    const isCodeCollision = result.error.code === "23505"
+      && /student_code/i.test(String(result.error.message || "") + String(result.error.details || ""));
+    if (!isCodeCollision) return result;
+    collidedCodes.push(studentCode);
+  }
+  return { error: { message: "Student ID allocation is busy. Please click Complete Enrollment again." } };
+}
+
 async function validateRequest(adminClient: SupabaseClientAny, enrollmentId = "", token = "") {
   const { data, error } = await adminClient
     .from("enrollments")
@@ -626,26 +667,7 @@ Deno.serve(async (request) => {
         return response(400, { error: "Next due date is required after recording an EMI payment." });
       }
 
-      const { data: enrolledRows } = await adminClient
-        .from("enrollments")
-        .select("student_id, pipeline_stage");
-      const enrolledStudentIds = new Set(
-        (enrolledRows || [])
-          .filter((item) => String(item.pipeline_stage || "").trim().toLowerCase() === "enrolled")
-          .map((item) => item.student_id)
-          .filter(Boolean),
-      );
-      const { data: studentRows } = await adminClient
-        .from("students")
-        .select("id, student_code");
-      const existingCodes = (studentRows || [])
-        .filter((item) => enrolledStudentIds.has(item.id))
-        .map((item) => String(item.student_code || "").trim())
-        .filter(Boolean);
-      const nextStudentCode = String((enrollment.students as StudentRecord | null)?.student_code || "").trim() || getNextStudentCode(existingCodes);
-
       const nextStudentPayload = pickStudentDbColumns({
-        student_code: nextStudentCode,
         full_name: fullName,
         email,
         phone,
@@ -657,9 +679,8 @@ Deno.serve(async (request) => {
         notes: sanitizeString((enrollment.students as StudentRecord | null)?.notes || ""),
       });
 
-      const { error: studentUpdateError } = await updateTableWithSchemaRetry({
+      const { error: studentUpdateError } = await saveStudentWithUniqueCode({
         adminClient,
-        tableName: "students",
         recordId: String(enrollment.student_id || ""),
         payload: nextStudentPayload,
       });

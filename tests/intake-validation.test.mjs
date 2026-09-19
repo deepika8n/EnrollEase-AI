@@ -9,7 +9,7 @@ import { getEnrollmentTimelineValidationMessage } from "../src/utils/enrollmentD
 const source = readFileSync(new URL("../supabase/functions/student-intake/index.ts", import.meta.url), "utf8");
 const helpers = source.slice(0, source.indexOf("Deno.serve(")).replace(/^import .*;\r?\n/gm, "");
 const start = source.indexOf("      const indiaToday =");
-const end = source.indexOf("      const { data: enrolledRows }", start);
+const end = source.indexOf("      const nextStudentPayload", start);
 assert.ok(start > 0 && end > start);
 function validate(patch) {
   class Clock extends Date { constructor(...args) { super(...(args.length ? args : ["2026-09-12T12:00:00Z"])); } }
