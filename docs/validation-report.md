@@ -1,3 +1,15 @@
+## Recheck: 19 September 2026
+
+- All 83 automated tests pass; production frontend build passes. Coverage includes login restoration, stale-response cancellation, failed/empty loads, enquiry/dropout form links, intake validation, payment history, reminder deduplication, media loading, avatar cropping, profile patches, and email failure handling. External services are mocked in these tests.
+- Fixed partial profile updates so omitted photos, documents and notes are preserved, and timeline-only edits do not blank student fields.
+- Public enrollment submission now calls a single restricted database transaction for the student, enrollment and documents. It rechecks the token under a row lock, serializes student ID allocation, preserves existing IDs and prevents duplicate document inserts on competing submissions.
+- Applied `supabase/transactional_student_intake.sql` and deployed the updated student-intake function. New installations must apply that SQL after the schema, discount-fields and media-preview migrations.
+- Live rollback-only tests passed for token rejection, function access restrictions, complete rollback after a document failure, successful complete save, repeated submission and existing student ID preservation. The reusable check is `supabase/verify_transactional_intake.sql`; all fixtures are rolled back and no email is sent.
+- Production REST schema checks accepted the student, enrollment, document and email-log payload columns (HTTP 200).
+- Limits: this is not a guarantee of zero errors. No complete interactive browser journey, real inbox delivery, arbitrary uploaded-file compatibility or simultaneous real-user load test was performed in this recheck. The build still reports a large JavaScript chunk warning.
+
+Earlier validation history follows; its counts and deployment IDs refer to earlier releases.
+
 # Validation report - 12 September 2026
 
 ## Passed

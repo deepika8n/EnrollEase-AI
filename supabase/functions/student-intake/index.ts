@@ -752,29 +752,18 @@ Deno.serve(async (request) => {
         email_logs: { enrollment_id: "", email_type: "", status: "", sent_at: "" },
       });
 
-      const { error: studentUpdateError } = await saveStudentWithUniqueCode({
-        adminClient,
-        recordId: String(enrollment.student_id || ""),
-        payload: nextStudentPayload,
+      const { data: savedSubmission, error: submissionError } = await adminClient.rpc("complete_student_intake", {
+        p_enrollment_id: enrollmentId,
+        p_token_hash: await sha256(token),
+        p_student: nextStudentPayload,
+        p_enrollment: nextEnrollmentPayload,
+        p_documents: documentPayload,
       });
-      if (studentUpdateError) {
-        return response(500, { error: studentUpdateError.message || "Unable to update the student profile." });
+      if (submissionError) {
+        console.error("Enrollment transaction failed:", submissionError);
+        return response(500, { error: "Unable to complete enrollment. Your submission was not saved; please retry or contact the admissions team." });
       }
-
-      const { error: enrollmentUpdateError } = await adminClient
-        .from("enrollments")
-        .update(nextEnrollmentPayload)
-        .eq("id", enrollmentId);
-      if (enrollmentUpdateError) {
-        return response(500, { error: enrollmentUpdateError.message || "Unable to update the enrollment record." });
-      }
-
-      const { error: documentError } = await adminClient
-        .from("documents")
-        .insert(documentPayload);
-      if (documentError) {
-        return response(500, { error: documentError.message || "Unable to save the uploaded documents." });
-      }
+      if (savedSubmission?.already_submitted) return response(200, { ok: true, emailFailures: [] });
 
       const courseName = String(enrollment.courses?.course_name || enrollment.course_name || "").trim();
       const studentAck = buildStudentSubmissionAckEmail(fullName, courseName);

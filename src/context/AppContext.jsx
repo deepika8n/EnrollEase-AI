@@ -3543,7 +3543,10 @@ export function AppProvider({ children }) {
       ? state.enrollments.find((item) => item.id === enrollmentId) || null
       : null;
 
-    const normalizedStudentPatch = pickStudentDbColumns({ ...studentPatch });
+    const normalizedStudentPatch = Object.fromEntries(
+      Object.entries(pickStudentDbColumns(studentPatch))
+        .filter(([key]) => Object.prototype.hasOwnProperty.call(studentPatch, key)),
+    );
     if (Object.prototype.hasOwnProperty.call(normalizedStudentPatch, "email")) {
       normalizedStudentPatch.email = hasValue(normalizedStudentPatch.email)
         ? String(normalizedStudentPatch.email).trim().toLowerCase()

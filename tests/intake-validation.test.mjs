@@ -27,8 +27,8 @@ test("missing schema fields stop submission before student or enrollment writes"
   } }; } }; } };
   await assert.rejects(verifySchema(client, { enrollments: { discount_amount: 10 } }), /Your form has not been submitted/);
   const preflight = source.indexOf("      await verifySubmissionSchema(");
-  assert.ok(preflight < source.indexOf("      const { error: studentUpdateError }"));
-  assert.ok(preflight < source.indexOf("      const { error: enrollmentUpdateError }"));
+  assert.ok(preflight < source.indexOf("      const { data: savedSubmission, error: submissionError }"));
+  assert.ok(source.includes('adminClient.rpc("complete_student_intake"'));
 });
 const start = source.indexOf("      const indiaToday =");
 const end = source.indexOf("      const nextStudentPayload", start);
