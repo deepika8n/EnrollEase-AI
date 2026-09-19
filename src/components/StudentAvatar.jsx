@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
+import { createAvatarCrop } from "../utils/avatarCrop";
 
 function buildInitials(name = "") {
   const parts = String(name || "")
@@ -36,7 +37,7 @@ export default function StudentAvatar({
     // do not make the UI flash back to initials.
     const image = new Image();
     image.onload = () => {
-      setDisplaySrc(normalizedSrc);
+      setDisplaySrc(createAvatarCrop(image));
       setHasLoadedImage(true);
     };
     image.onerror = () => {
@@ -72,7 +73,7 @@ export default function StudentAvatar({
     <img
       src={displaySrc}
       alt={alt || name || "Student avatar"}
-      className={className}
+      className={clsx("object-cover object-[center_25%]", className)}
       onError={() => {
         if (!displaySrc) {
           setHasLoadedImage(false);
