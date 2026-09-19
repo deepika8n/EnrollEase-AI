@@ -4,6 +4,7 @@ import AppShell from "../components/AppShell";
 import DocumentPreview from "../components/DocumentPreview";
 import EmptyState from "../components/EmptyState";
 import PageHeader from "../components/PageHeader";
+import RecordPaymentForm from "../components/RecordPaymentForm";
 import StatusBadge from "../components/StatusBadge";
 import StudentAvatar from "../components/StudentAvatar";
 import Timeline from "../components/Timeline";
@@ -24,6 +25,7 @@ import {
   normalizePaymentHistoryList,
   resolveDiscountAmount,
   resolveAmountPaid,
+  resolveInstallmentProgress,
   resolveLastPaymentDate,
   resolveNextDueDate,
   resolvePayableFee,
@@ -239,6 +241,7 @@ export default function StudentProfilePageFixed() {
   const { id } = useParams();
   const { portalRecords, emailLogs, logEmail, updateStudentProfile } = useApp();
   const [preview, setPreview] = useState(null);
+  const [recordingPayment, setRecordingPayment] = useState(false);
   const [editingProfile, setEditingProfile] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileError, setProfileError] = useState("");
@@ -303,13 +306,8 @@ export default function StudentProfilePageFixed() {
     const courseFee = savedPayableFee || resolvePayableFee(originalFee, enrollment.discount_type, enrollment.discount_value) || 0;
     const amountPaid = resolveAmountPaid(enrollment.amount_paid, enrollment.payment_history);
     const currentStage = record.currentStage;
-    const paymentPlan = inferPaymentPlan({
-      paymentPlan: enrollment.payment_plan || "",
-      installmentsPlanned: enrollment.installments_planned || 0,
-      history: enrollment.payment_history,
-      amountPaid,
-    });
-    const installmentsPlanned = Number(enrollment.installments_planned) || (paymentPlan === "EMI" ? 3 : paymentPlan ? 1 : 0);
+    const progress = resolveInstallmentProgress({ ...enrollment, total_fee: courseFee, amount_paid: amountPaid });
+    const { paymentPlan, installmentsPlanned, installmentsPaid, remainingInstallments, installmentAmount } = progress;
     const paymentHistory = normalizePaymentHistoryList(enrollment.payment_history, {
       totalFee: courseFee,
       paymentPlan,
@@ -327,19 +325,13 @@ export default function StudentProfilePageFixed() {
       leadDate: enrollment.lead_date || enrollment.created_at || "",
     });
     const remainingAmount = resolveRemainingAmount(courseFee, amountPaid);
-    const nextDueDate = resolveNextDueDate({
+    const nextDueDate = remainingAmount > 0 && paymentPlan === "EMI" ? (enrollment.next_due_date || resolveNextDueDate({
       paymentStatus: enrollment.payment_status || "",
       paymentPlan,
       lastPaymentDate,
       history: paymentHistory,
-    });
-    const installmentsPaid = Number(enrollment.installments_paid) || latestPayment?.installments_paid || (paymentPlan === "EMI" ? paymentHistory.length : amountPaid > 0 ? 1 : 0);
-    const remainingInstallments = paymentPlan === "EMI"
-      ? Math.max(installmentsPlanned - installmentsPaid, 0)
-      : 0;
-    const installmentAmount = paymentPlan === "EMI"
-      ? (remainingInstallments > 0 ? Math.round((remainingAmount || 0) / remainingInstallments) : 0)
-      : 0;
+      enrolledDate: enrollment.enrolled_date,
+    })) : "";
 
     return {
       currentStage,
@@ -601,11 +593,12 @@ export default function StudentProfilePageFixed() {
 
         return (
           <>
-      <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-        <div className="space-y-6">
+      <div>
+        <div className="grid gap-6 grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+        <div className="space-y-6 min-w-0">
           <section className="panel overflow-hidden p-0">
             <div className="bg-[linear-gradient(135deg,#061f37_0%,#0b3558_55%,#1a5a82_100%)] p-5 md:p-6">
-              <div className="grid gap-4 sm:grid-cols-[auto_1fr] sm:items-center">
+              <div className="grid grid-cols-[auto_1fr] items-center gap-4">
                 <StudentAvatar
                   src={studentPhotoUrl}
                   name={student.full_name}
@@ -624,7 +617,7 @@ export default function StudentProfilePageFixed() {
             <h2 className="section-title">Complete profile</h2>
             {editingProfile ? (
               <div className="mt-6 space-y-5">
-                <div className="grid gap-4 lg:grid-cols-2">
+                <div className="grid grid-cols-2 gap-4">
                   <EditField label="Custom student ID">
                     <input value={profileForm.student_code} onChange={(event) => handleProfileFieldChange("student_code", event.target.value)} />
                   </EditField>
@@ -703,7 +696,7 @@ export default function StudentProfilePageFixed() {
                     {timelineValidationMessages.join(" ")}
                   </div>
                 ) : null}
-                <div className="grid gap-4 lg:grid-cols-2">
+                <div className="grid grid-cols-2 gap-4">
                   <DetailCard label="Lead date" value={formatDate(normalized.enrollment.lead_date)} />
                   <DetailCard label="Enrolled date" value={formatDate(normalized.enrollment.enrolled_date)} />
                   <DetailCard label="Custom student ID" value={student.student_code} />
@@ -718,7 +711,7 @@ export default function StudentProfilePageFixed() {
 
           <section className="panel p-4 sm:p-6">
             <h2 className="section-title">Document previews</h2>
-            <div className="mt-6 grid gap-5 lg:grid-cols-2">
+            <div className="mt-6 grid grid-cols-2 gap-5">
               <div className="flex h-full flex-col">
                 <p className="mb-3 text-sm font-semibold uppercase tracking-[0.14em] text-slate-500 sm:min-h-[3.75rem] sm:tracking-[0.18em]">Student photo</p>
                 {studentPhotoUrl ? (
@@ -773,9 +766,13 @@ export default function StudentProfilePageFixed() {
           </section>
         </div>
 
-        <div className="space-y-6">
+        <div className="space-y-6 min-w-0">
           <section className="panel p-4 sm:p-6">
             <h2 className="section-title">Enrollment and payment summary</h2>
+            {record.isEnrolledRecord && normalized.remainingAmount > 0 ? (
+              <button type="button" className="button-primary mt-3" onClick={() => setRecordingPayment(true)}>Record payment</button>
+            ) : null}
+            {recordingPayment ? <RecordPaymentForm key={enrollment.id} record={record} onClose={() => setRecordingPayment(false)} /> : null}
             {isPreEnrollment ? (
               <div className="mt-6 rounded-[24px] border border-slate-200 bg-surface-50 p-5">
                 <p className="surface-label">Payment Status</p>
@@ -783,7 +780,7 @@ export default function StudentProfilePageFixed() {
                 <p className="mt-2 text-sm text-slate-600">Payment details become available after this enquiry is converted to enrolled status.</p>
               </div>
             ) : (
-              <div className="mt-6 grid gap-4 lg:grid-cols-2">
+              <div className="mt-6 grid grid-cols-2 gap-4">
                 {normalized.discountAmount > 0 ? (
                   <>
                     <DetailCard label="Original fee" value={formatCurrencyValue(normalized.originalFee)} />
@@ -849,7 +846,7 @@ export default function StudentProfilePageFixed() {
             </div>
             {editingTimelineDates ? (
               <div className="mt-6 space-y-5">
-                <div className="grid gap-4 lg:grid-cols-2">
+                <div className="grid grid-cols-2 gap-4">
                   <EditField label="Lead date">
                     <input
                       type="date"
@@ -926,7 +923,7 @@ export default function StudentProfilePageFixed() {
                     </div>
                     <StatusBadge value={payment.status} />
                   </div>
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+                  <div className="mt-4 grid grid-cols-2 gap-3 2xl:grid-cols-3">
                     <PaymentHistoryMetric label="Course fee" value={formatCurrencyValue(payment.course_fee)} />
                     <PaymentHistoryMetric label="Paid" value={formatCurrencyValue(payment.paid_amount ?? payment.amount)} />
                     <PaymentHistoryMetric label="Pay type" value={payment.payment_type || formatPaymentTypeDisplay(normalized.enrollment.payment_plan)} />
@@ -941,6 +938,7 @@ export default function StudentProfilePageFixed() {
               )}
             </div>
           </section>
+        </div>
         </div>
       </div>
           </>

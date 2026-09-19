@@ -6,7 +6,7 @@ import { useApp } from "../context/AppContext";
 const ADMISSIONS_IMAGE_URL = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRIuIDRNN8zQ6HzZwhfzlOgOJikIGaiScyJnhgaIxt-Og&s=10";
 
 export default function LoginPageSimple() {
-  const { currentUser, login, logout, resetPassword } = useApp();
+  const { currentUser, loading, login, logout, resetPassword } = useApp();
   const [form, setForm] = useState({ email: "", password: "" });
   const [resetMode, setResetMode] = useState(false);
   const [resetForm, setResetForm] = useState({ email: "admin@enrollease.ai", currentPassword: "", newPassword: "" });
@@ -15,8 +15,9 @@ export default function LoginPageSimple() {
   const [submitting, setSubmitting] = useState(false);
   const [clearingFreshSession, setClearingFreshSession] = useState(false);
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const skipAutoRedirectRef = useRef(false);
+  const freshSessionCleanupRef = useRef(null);
   const forceFreshLogin = searchParams.get("fresh") === "1";
 
   useEffect(() => {
@@ -28,17 +29,28 @@ export default function LoginPageSimple() {
     let active = true;
     skipAutoRedirectRef.current = true;
 
-    if (!currentUser) {
-      setClearingFreshSession(false);
-      return () => {
-        active = false;
-      };
-    }
+    // Wait for session restoration before deciding whether cleanup is needed.
+    if (loading && !freshSessionCleanupRef.current) return;
 
     setClearingFreshSession(true);
+    // Reuse the same operation across context updates and StrictMode effects.
+    if (!freshSessionCleanupRef.current) {
+      freshSessionCleanupRef.current = currentUser
+        ? logout({ silent: true })
+        : Promise.resolve();
+    }
     void (async () => {
       try {
-        await logout();
+        await freshSessionCleanupRef.current;
+        if (active) {
+          setSearchParams((prev) => {
+            const next = new URLSearchParams(prev);
+            next.delete("fresh");
+            return next;
+          }, { replace: true });
+        }
+      } catch (logoutError) {
+        if (active) setError(logoutError.message || "Could not prepare login. Please reload and try again.");
       } finally {
         if (active) {
           setClearingFreshSession(false);
@@ -49,7 +61,7 @@ export default function LoginPageSimple() {
     return () => {
       active = false;
     };
-  }, [currentUser, forceFreshLogin, logout]);
+  }, [currentUser, loading, forceFreshLogin, logout, setSearchParams]);
 
   useEffect(() => {
     if (currentUser && !skipAutoRedirectRef.current && !forceFreshLogin) {
@@ -67,6 +79,7 @@ export default function LoginPageSimple() {
 
   const handleLogin = async (event) => {
     event.preventDefault();
+    if (forceFreshLogin || clearingFreshSession || loading || submitting) return;
     setError("");
     setSubmitting(true);
     skipAutoRedirectRef.current = true;
@@ -150,7 +163,7 @@ export default function LoginPageSimple() {
               )}
             </div>
 
-            {clearingFreshSession ? (
+            {forceFreshLogin || clearingFreshSession ? (
               <p className="mt-5 text-center text-sm font-semibold text-slate-500">Preparing fresh login...</p>
             ) : null}
 
@@ -216,7 +229,7 @@ export default function LoginPageSimple() {
                 type="submit"
                 className="mt-1 inline-flex h-[52px] w-full items-center justify-center rounded-[16px] bg-gradient-to-b from-brand-500 via-brand-600 to-brand-700 text-sm font-semibold text-white shadow-[0_18px_36px_rgba(11,53,88,0.22)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110 hover:shadow-[0_22px_44px_rgba(11,53,88,0.26)] focus:outline-none focus:ring-4 focus:ring-accent-100 disabled:translate-y-0 disabled:brightness-100 disabled:shadow-[0_18px_36px_rgba(11,53,88,0.16)]"
                 style={{ animation: "fadeUp 500ms ease both", animationDelay: "240ms" }}
-                disabled={submitting}
+                disabled={submitting || loading || forceFreshLogin || clearingFreshSession}
               >
                 {submitting ? "Signing in..." : "Sign In"}
               </button>

@@ -201,10 +201,10 @@ export default function RecordsPage() {
             key: "actions",
             label: "Actions",
             render: (_, row) => (
-              <div className="grid gap-2 sm:flex sm:flex-wrap">
+              <div className="flex min-w-max flex-nowrap items-center gap-2">
                 <button
                   type="button"
-                  className="button-secondary px-3 py-2 text-xs"
+                  className="button-secondary !w-auto shrink-0 whitespace-nowrap px-3 py-2 text-xs"
                   onClick={(event) => {
                     event.stopPropagation();
                     navigate(`/students/${row.student_id}`);
@@ -214,7 +214,7 @@ export default function RecordsPage() {
                 </button>
                 <button
                   type="button"
-                  className="button-secondary px-3 py-2 text-xs"
+                  className="button-secondary !w-auto shrink-0 whitespace-nowrap px-3 py-2 text-xs"
                   onClick={async (event) => {
                     event.stopPropagation();
                     const shouldDelete = window.confirm(`Delete ${row.student_name} from student records?`);

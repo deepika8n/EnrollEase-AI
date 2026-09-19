@@ -98,6 +98,7 @@ create table if not exists email_logs (
   id uuid primary key default gen_random_uuid(),
   enrollment_id uuid references enrollments(id) on delete set null,
   email_type text not null,
+  event_key text,
   status text default 'Queued',
   sent_at timestamptz default now()
 );

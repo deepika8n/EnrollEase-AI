@@ -38,10 +38,25 @@ function RouteLoader() {
 }
 
 function ProtectedRoute({ children }) {
-  const { currentUser, loading } = useApp();
+  const { currentUser, authUser, loading, dataError, refreshState, logout } = useApp();
 
   if (loading) {
     return <RouteLoader />;
+  }
+
+  if (dataError) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-canvas px-6">
+        <div className="panel w-full max-w-lg p-8 text-center" role="alert">
+          <h1 className="text-2xl font-semibold text-slate-950">Unable to load your data</h1>
+          <p className="mt-3 text-slate-600">{dataError}</p>
+          <button className="mt-6 rounded-full bg-brand-500 px-6 py-3 font-semibold text-white"
+            onClick={() => { void refreshState(authUser).catch(() => {}); }}>Retry</button>
+          <button className="ml-4 font-semibold text-slate-600"
+            onClick={() => { void logout().catch(() => {}); }}>Sign out</button>
+        </div>
+      </div>
+    );
   }
 
   if (!currentUser) {

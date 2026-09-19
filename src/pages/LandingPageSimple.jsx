@@ -90,7 +90,7 @@ const courseAdvisorSignals = {
     nextStep: "Begin with Python Programming if you want a practical, friendly entry into tech.",
   },
   "Digital Marketing": {
-    keywords: ["marketing", "sales", "seo", "social media", "instagram", "content", "ads", "business", "mba", "brand", "creative", "communication"],
+    keywords: ["bcom marketing", "bba marketing", "marketing student", "marketing", "sales", "seo", "social media", "instagram", "content", "ads", "business", "mba", "bcom", "bba", "brand", "creative", "communication"],
     reason: "Your profile leans toward growth, communication, campaigns, and brand visibility.",
     nextStep: "Go with Digital Marketing if you like strategy, content, ads, and customer growth.",
   },
@@ -105,7 +105,13 @@ function formatCourseFee(value) {
 }
 
 function normalizeAdvisorText(value = "") {
-  return String(value || "").toLowerCase().replace(/[^a-z0-9+#.\s-]+/g, " ").replace(/\s+/g, " ").trim();
+  return String(value || "")
+    .toLowerCase()
+    .replace(/\bmarketting\b/g, "marketing")
+    .replace(/\bdigital marketting\b/g, "digital marketing")
+    .replace(/[^a-z0-9+#.\s-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function getAiCourseSuggestion(form, courses = []) {

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import AppShell from "../components/AppShell";
 import DataTable from "../components/DataTable";
 import PageHeader from "../components/PageHeader";
+import RecordPaymentForm from "../components/RecordPaymentForm";
 import StatusBadge from "../components/StatusBadge";
 import { useApp } from "../context/AppContext";
 import { formatCurrency, formatDate, formatNumber, formatPercent } from "../utils/formatters";
@@ -22,6 +23,9 @@ export default function PaymentsPage() {
   const { portalRecords, sendPaymentEmail } = useApp();
   const navigate = useNavigate();
   const [paymentFilter, setPaymentFilter] = useState("all");
+  const [recordingId, setRecordingId] = useState("");
+  const recordingRecord = portalRecords.find((record) => record.enrollment.id === recordingId);
+  const openPayment = (id) => { setRecordingId(id); window.scrollTo({ top: 0, behavior: "smooth" }); };
 
   const paymentRecords = useMemo(
     () => portalRecords.filter((record) => record.paymentEligible && record.isEnrolledRecord),
@@ -92,6 +96,8 @@ export default function PaymentsPage() {
         eyebrow="Payments"
         title="Collections overview"
       />
+
+      {recordingRecord ? <RecordPaymentForm key={recordingId} record={recordingRecord} onClose={() => setRecordingId("")} /> : null}
 
       <section className="panel overflow-hidden p-0">
         <div className="hide-scrollbar overflow-x-auto">
@@ -167,6 +173,7 @@ export default function PaymentsPage() {
               label: "Actions",
               render: (_, row) => (
                 <div className="grid gap-2 sm:flex sm:flex-wrap">
+                  <button type="button" className="button-primary px-3 py-2 text-xs" disabled={row.payment_status === "Cleared"} onClick={(event) => { event.stopPropagation(); openPayment(row.id); }}>Record payment</button>
                   <button
                     type="button"
                     className="button-secondary px-3 py-2 text-xs"
@@ -227,6 +234,7 @@ export default function PaymentsPage() {
               label: "Action",
               render: (_, row) => (
                 <div className="grid gap-2 sm:flex sm:flex-wrap">
+                  <button type="button" className="button-primary px-3 py-2 text-xs" disabled={row.payment_status === "Cleared"} onClick={(event) => { event.stopPropagation(); openPayment(row.id); }}>Record payment</button>
                   <button
                     type="button"
                     className="button-secondary px-3 py-2 text-xs"

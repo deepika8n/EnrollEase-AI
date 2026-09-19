@@ -583,7 +583,7 @@ export default function EnrollmentForm({
         if (amountPaid > 0 && !form.last_payment_date) {
           throw new Error("Last payment date is required when amount paid is greater than zero.");
         }
-        if (form.payment_plan === "EMI" && amountPaid > 0 && !form.next_due_date) {
+        if (form.payment_plan === "EMI" && amountPaid > 0 && amountPaid < totalFee && !form.next_due_date) {
           throw new Error("Next due date is required after recording an EMI payment.");
         }
 

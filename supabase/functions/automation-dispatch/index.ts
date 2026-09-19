@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { sendEmail } from "../_shared/email.ts";
+import { getAdminNotificationEmail, sendEmail } from "../_shared/email.ts";
+import { buildStudentAckEmail, buildAdminNotificationEmail, buildStudentSubmissionAckEmail, buildAdminSubmissionEmail } from "../_shared/lifecycleEmails.ts";
 
 const ENQUIRY_FOLLOW_UP_INTERVAL_DAYS = 3;
 const ENQUIRY_MAX_FOLLOW_UP_CYCLES = 2;
@@ -25,6 +26,7 @@ type CourseRecord = {
 };
 
 type EnrollmentRecord = {
+  payment_history?: Array<{ id?: string; date?: string; paid_amount?: number; amount?: number; cumulative_paid?: number; recorded_at?: string; status?: string }>;
   id: string;
   student_id: string;
   course_id: string | null;
@@ -44,11 +46,13 @@ type EnrollmentRecord = {
   last_payment_date: string | null;
   created_at: string | null;
   student_form_status: string | null;
+  student_form_submitted_at?: string | null;
   student_form_sent_at: string | null;
   student_form_expires_at: string | null;
 };
 
 type EmailLogRecord = {
+  event_key?: string | null;
   enrollment_id: string | null;
   email_type: string | null;
   status: string | null;
@@ -56,6 +60,7 @@ type EmailLogRecord = {
 };
 
 type SendResult = {
+  skipped?: boolean;
   ok: boolean;
   message: string;
 };
@@ -107,7 +112,9 @@ function toIsoDate(value: string | Date | null | undefined) {
     return "";
   }
 
-  return parsed.toISOString().slice(0, 10);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: INDIA_TIMEZONE, year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(parsed);
 }
 
 function addDays(isoDate = "", days = 0) {
@@ -119,15 +126,15 @@ function addDays(isoDate = "", days = 0) {
 }
 
 function addMonthsPreservingDay(isoDate = "", months = 1) {
-  const baseDate = parseDate(isoDate);
-  if (!baseDate) return "";
-
-  const baseDay = baseDate.getDate();
-  const targetMonthIndex = baseDate.getMonth() + months;
-  const targetYear = baseDate.getFullYear() + Math.floor(targetMonthIndex / 12);
+  const normalized = toIsoDate(isoDate);
+  if (!normalized) return "";
+  const baseDate = new Date(`${normalized}T00:00:00.000Z`);
+  const baseDay = baseDate.getUTCDate();
+  const targetMonthIndex = baseDate.getUTCMonth() + months;
+  const targetYear = baseDate.getUTCFullYear() + Math.floor(targetMonthIndex / 12);
   const normalizedTargetMonth = ((targetMonthIndex % 12) + 12) % 12;
-  const lastDayOfTargetMonth = new Date(targetYear, normalizedTargetMonth + 1, 0).getDate();
-  const nextDate = new Date(targetYear, normalizedTargetMonth, Math.min(baseDay, lastDayOfTargetMonth));
+  const lastDayOfTargetMonth = new Date(Date.UTC(targetYear, normalizedTargetMonth + 1, 0)).getUTCDate();
+  const nextDate = new Date(Date.UTC(targetYear, normalizedTargetMonth, Math.min(baseDay, lastDayOfTargetMonth)));
   return toIsoDate(nextDate);
 }
 
@@ -275,7 +282,7 @@ function getEnrollmentLogs(emailLogs: EmailLogRecord[], enrollmentId = "", match
 }
 
 function getSuccessfulFollowUpCount(emailLogs: EmailLogRecord[], enrollmentId = "") {
-  return getEnrollmentLogs(emailLogs, enrollmentId, isFollowUpEmailLog).length;
+  return new Set(getEnrollmentLogs(emailLogs, enrollmentId, isFollowUpEmailLog).map((log) => toIsoDate(log.sent_at))).size;
 }
 
 function hasSuccessfulEmailOnOrAfter(
@@ -1016,6 +1023,7 @@ function buildPaymentDispatch(
   courseRecord: CourseRecord | null,
   relatedCourses: CourseRecord[],
   emailVariant: "payment_update" | "due_reminder",
+  receivedAmount?: number,
 ) {
   const totalFee = toNumberOrNull(enrollment.total_fee) ?? 0;
   const amountPaid = toNumberOrNull(enrollment.amount_paid) ?? 0;
@@ -1030,7 +1038,7 @@ function buildPaymentDispatch(
   const html = buildPaymentStatusEmailHtml({
     studentName: student.full_name,
     courseName: courseRecord?.course_name || enrollment.course_name || "",
-    paidAmount: amountPaid,
+    paidAmount: receivedAmount ?? amountPaid,
     paymentDate,
     isCleared,
     remainingAmount,
@@ -1041,7 +1049,7 @@ function buildPaymentDispatch(
   const text = buildPaymentStatusEmailText({
     studentName: student.full_name,
     courseName: courseRecord?.course_name || enrollment.course_name || "",
-    paidAmount: amountPaid,
+    paidAmount: receivedAmount ?? amountPaid,
     paymentDate,
     isCleared,
     remainingAmount,
@@ -1070,7 +1078,7 @@ function buildPaymentDispatch(
         relatedCourses,
         emailVariant,
         isCleared,
-        paidAmount: amountPaid,
+        paidAmount: receivedAmount ?? amountPaid,
         paymentDate,
         remainingAmount,
         nextDueDate: enrollment.next_due_date || "",
@@ -1115,7 +1123,11 @@ function resolveSupabaseSecretKey() {
 
 async function sendAutomationRequest(payload: Record<string, unknown>, _event: string, _agentType: string, _actionType: string): Promise<SendResult> {
   try {
-    await sendEmail({
+    const delivery = await sendEmail({
+      enrollmentId: String((payload.enrollment as EnrollmentRecord)?.id || ""),
+      emailType: String(payload.deliveryEmailType || ""),
+      deliveryKey: String(payload.deliveryKey || "") || undefined,
+      enrollmentPatch: payload.enrollmentPatch as Record<string, unknown> | undefined,
       to: String(payload.recipientEmail || "").trim(),
       subject: String(payload.subject || "").trim(),
       html: String(payload.html || payload.htmlMessage || ""),
@@ -1124,6 +1136,7 @@ async function sendAutomationRequest(payload: Record<string, unknown>, _event: s
 
     return {
       ok: true,
+      skipped: delivery?.skipped === true,
       message: "Email sent successfully.",
     };
   } catch (error) {
@@ -1158,6 +1171,17 @@ Deno.serve(async (request) => {
     }
 
     const supabaseUrl = String(Deno.env.get("SUPABASE_URL") || "").trim();
+    const requestBody = await request.json().catch(() => ({}));
+    const dryRun = requestBody.dryRun === true;
+    // Fixed rollout boundary: never infer old one-off notifications from missing logs.
+    // Do not advance this date on redeploy; genuine newer failed events must remain retryable.
+    const notificationStart = Date.parse(Deno.env.get("AUTOMATION_NOTIFICATION_START_AT") || "2026-09-12T18:05:21.408Z");
+    if (!Number.isFinite(notificationStart)) throw new Error("Invalid AUTOMATION_NOTIFICATION_START_AT configuration.");
+    const isNewNotification = (timestamp?: string | null) => Boolean(timestamp) && Date.parse(timestamp!) >= notificationStart;
+    const receiptsOnly = requestBody.scope === "payment_receipts";
+    const paymentRemindersOnly = receiptsOnly || (Deno.env.get("AUTOMATION_PAYMENT_REMINDERS_ONLY") === "true"
+      && !(dryRun && requestBody.scope === "all"));
+    const receiptsEnabled = receiptsOnly || !paymentRemindersOnly || Deno.env.get("AUTOMATION_PAYMENT_RECEIPTS_ENABLED") === "true";
     const supabaseSecretKey = resolveSupabaseSecretKey();
     const supabaseAdmin = createClient(supabaseUrl, supabaseSecretKey, {
       auth: {
@@ -1176,10 +1200,10 @@ Deno.serve(async (request) => {
         .select("id, course_name, fee, mode"),
       supabaseAdmin
         .from("enrollments")
-        .select("id, student_id, course_id, course_name, batch, pipeline_stage, lead_date, enrolled_date, follow_up_date, total_fee, amount_paid, next_due_date, payment_status, verification_status, remarks, dropout_reason, last_payment_date, created_at, student_form_status, student_form_sent_at, student_form_expires_at"),
+        .select("id, student_id, course_id, course_name, batch, pipeline_stage, lead_date, enrolled_date, follow_up_date, total_fee, amount_paid, payment_history, next_due_date, payment_status, verification_status, remarks, dropout_reason, last_payment_date, created_at, student_form_status, student_form_submitted_at, student_form_sent_at, student_form_expires_at"),
       supabaseAdmin
         .from("email_logs")
-        .select("enrollment_id, email_type, status, sent_at")
+        .select("enrollment_id, email_type, status, sent_at, event_key")
         .order("sent_at", { ascending: false }),
     ]);
 
@@ -1199,7 +1223,7 @@ Deno.serve(async (request) => {
     const dispatched: string[] = [];
     const failures: Array<{ enrollmentId: string; emailType: string; message: string }> = [];
 
-    async function persistEmailLog(log: { enrollment_id: string; email_type: string; status: string; sent_at: string }) {
+    async function persistEmailLog(log: { enrollment_id: string; email_type: string; status: string; sent_at: string; event_key?: string }) {
       const { error } = await supabaseAdmin.from("email_logs").insert(log);
       if (error) {
         throw error;
@@ -1208,6 +1232,7 @@ Deno.serve(async (request) => {
     }
 
     async function persistFailureLogIfNeeded(enrollmentId: string, emailType: string, message: string) {
+      failures.push({ enrollmentId, emailType, message });
       if (hasFailureLogToday(emailLogs, enrollmentId, emailType, todayIsoDate)) {
         return;
       }
@@ -1223,7 +1248,6 @@ Deno.serve(async (request) => {
         // Avoid failing the whole run if the fallback log cannot be inserted.
       }
 
-      failures.push({ enrollmentId, emailType, message });
     }
 
     async function dispatchOne(args: {
@@ -1231,8 +1255,14 @@ Deno.serve(async (request) => {
       student: StudentRecord;
       course: CourseRecord | null;
       kind: "follow_up" | "admission_confirmation" | "payment_update" | "payment_reminder";
+      eventKey?: string;
+      receivedAmount?: number;
     }) {
       const { enrollment, student, course, kind } = args;
+      if (dryRun) {
+        dispatched.push(`${kind}:${enrollment.id}`);
+        return;
+      }
       const relatedCourses = kind === "payment_update" || kind === "payment_reminder"
         ? findRelatedCoursesForEnrollment(course, courses)
         : [];
@@ -1249,10 +1279,19 @@ Deno.serve(async (request) => {
             course,
             relatedCourses,
             kind === "payment_reminder" ? "due_reminder" : "payment_update",
+            args.receivedAmount,
           );
 
       const sendResult = await sendAutomationRequest(
-        dispatch.payload,
+        { ...dispatch.payload, deliveryEmailType: dispatch.logType, deliveryKey: args.eventKey,
+          ...(kind === "follow_up" ? { enrollmentPatch: {
+            follow_up_date: dispatch.nextFollowUpDate,
+            student_form_status: "Sent",
+            student_form_sent_at: dispatch.sentAt,
+            student_form_expires_at: dispatch.formExpiresAt,
+            student_form_token_hash: dispatch.formTokenHash,
+          } } : {}),
+        },
         dispatch.event,
         dispatch.agentType,
         dispatch.actionType,
@@ -1266,30 +1305,51 @@ Deno.serve(async (request) => {
       await persistEmailLog({
         enrollment_id: enrollment.id,
         email_type: dispatch.logType,
-        status: dispatch.logStatus,
+        status: "Sent",
         sent_at: dispatch.sentAt,
+        ...(args.eventKey ? { event_key: args.eventKey } : {}),
       });
-
-      if (kind === "follow_up" && dispatch.nextFollowUpDate) {
-        const { error } = await supabaseAdmin
-          .from("enrollments")
-          .update({
-            follow_up_date: dispatch.nextFollowUpDate,
-            student_form_status: "Sent",
-            student_form_sent_at: dispatch.sentAt,
-            student_form_expires_at: dispatch.formExpiresAt,
-            student_form_token_hash: dispatch.formTokenHash,
-          })
-          .eq("id", enrollment.id);
-        if (error) {
-          throw error;
-        }
-      }
 
       dispatched.push(`${dispatch.logType}:${enrollment.id}`);
     }
 
+    async function dispatchNotice(enrollment: EnrollmentRecord, emailType: string, to: string, email: { subject: string; html: string; text: string }) {
+      if (getEnrollmentLogs(emailLogs, enrollment.id, (log) => log.email_type === emailType).length) return;
+      if (dryRun) { dispatched.push(`${emailType}:${enrollment.id}`); return; }
+      try {
+        await sendEmail({ to, ...email, enrollmentId: enrollment.id, emailType });
+        await persistEmailLog({ enrollment_id: enrollment.id, email_type: emailType, status: "Sent", sent_at: new Date().toISOString() });
+        dispatched.push(`${emailType}:${enrollment.id}`);
+      } catch (error) {
+        await persistFailureLogIfNeeded(enrollment.id, emailType, error instanceof Error ? error.message : "Notification failed");
+      }
+    }
+
+    const { data: retryDeliveries, error: retryError } = await supabaseAdmin.from("email_deliveries")
+      .select("event_key,payload").eq("status", "retry").lte("next_attempt_at", new Date().toISOString()).limit(20);
+    if (retryError) throw retryError;
+    for (const delivery of retryDeliveries || []) {
+      const payload = delivery.payload;
+      const isReceipt = isPaymentUpdateEmailLog({ email_type: payload.emailType } as EmailLogRecord);
+      if (requestBody.enrollmentId && payload.enrollmentId !== requestBody.enrollmentId) continue;
+      if (receiptsOnly && !isReceipt) continue;
+      if (paymentRemindersOnly && !(receiptsEnabled && isReceipt) && !isPaymentReminderEmailLog({ email_type: payload.emailType } as EmailLogRecord)) continue;
+      if (dryRun) { dispatched.push(`retry:${payload.emailType}`); continue; }
+      try {
+        await sendEmail({ ...payload, deliveryKey: delivery.event_key });
+        await persistEmailLog({ enrollment_id: payload.enrollmentId, email_type: payload.emailType,
+          status: "Sent", sent_at: new Date().toISOString(), event_key: delivery.event_key });
+        dispatched.push(`retry:${payload.emailType}`);
+      } catch (error) {
+        failures.push({ enrollmentId: payload.enrollmentId, emailType: payload.emailType, message: String(error instanceof Error ? error.message : error) });
+      }
+    }
+
     for (const enrollment of enrollments) {
+      if (requestBody.enrollmentId && enrollment.id !== requestBody.enrollmentId) continue;
+      if (paymentRemindersOnly && !isEnrolledStage(enrollment.pipeline_stage || "")) {
+        continue;
+      }
       const student = studentById.get(enrollment.student_id);
       if (!student || !hasReachableStudentEmail(student.email || "")) {
         continue;
@@ -1299,6 +1359,20 @@ Deno.serve(async (request) => {
         || courses.find((item) => item.course_name === enrollment.course_name)
         || null;
 
+      // Leave a grace period for the submission endpoint's immediate email sends.
+      const submissionSettled = !enrollment.created_at || Date.now() - new Date(enrollment.created_at).valueOf() > 60000;
+      if (!paymentRemindersOnly && submissionSettled) {
+        const courseName = course?.course_name || enrollment.course_name || "";
+        if (isNewNotification(enrollment.created_at) && isEnquiryStage(enrollment.pipeline_stage || "") && compareIsoDates(getEnquiryAutoDropoutDate(enrollment.lead_date || enrollment.created_at || ""), todayIsoDate) > 0) {
+          await dispatchNotice(enrollment, "Enquiry Acknowledgement", student.email, buildStudentAckEmail({ studentName: student.full_name, courseName }));
+          await dispatchNotice(enrollment, "Admin New Enquiry Alert", getAdminNotificationEmail(), buildAdminNotificationEmail({ studentName: student.full_name, email: student.email, phone: student.phone, courseName, remarks: enrollment.remarks || "" }));
+        }
+        if (isNewNotification(enrollment.student_form_submitted_at) && isEnrolledStage(enrollment.pipeline_stage || "") && String(enrollment.student_form_status || "").toLowerCase() === "submitted") {
+          await dispatchNotice(enrollment, "Student Enrollment Submitted", student.email, buildStudentSubmissionAckEmail(student.full_name, courseName));
+          await dispatchNotice(enrollment, "Admin Enrollment Submission Alert", getAdminNotificationEmail(), buildAdminSubmissionEmail(student.full_name, student.email, courseName));
+        }
+      }
+
       if (isEnquiryStage(enrollment.pipeline_stage || "")) {
         if (String(enrollment.student_form_status || "").trim().toLowerCase() === "submitted") {
           continue;
@@ -1306,6 +1380,10 @@ Deno.serve(async (request) => {
         const leadDate = enrollment.lead_date || enrollment.created_at || "";
         const autoDropoutDate = getEnquiryAutoDropoutDate(leadDate);
         if (autoDropoutDate && compareIsoDates(autoDropoutDate, todayIsoDate) <= 0) {
+          if (dryRun) {
+            dispatched.push(`Auto Dropout:${enrollment.id}`);
+            continue;
+          }
           const { error } = await supabaseAdmin
             .from("enrollments")
             .update({
@@ -1346,27 +1424,42 @@ Deno.serve(async (request) => {
         continue;
       }
 
-      if (!getEnrollmentLogs(emailLogs, enrollment.id, isAdmissionConfirmationEmailLog).length) {
-        await dispatchOne({
-          enrollment,
-          student,
-          course,
-          kind: "admission_confirmation",
-        });
-      }
+      // Admission confirmation and Profile Send Mail are explicitly manual.
 
       const amountPaid = toNumberOrNull(enrollment.amount_paid) ?? 0;
-      if (amountPaid > 0) {
+      if (receiptsEnabled && amountPaid > 0) {
         const paymentUpdateAnchorDate = enrollment.last_payment_date || enrollment.enrolled_date || enrollment.lead_date || "";
-        if (
-          paymentUpdateAnchorDate
-          && !hasSuccessfulEmailOnOrAfter(emailLogs, enrollment.id, isPaymentUpdateEmailLog, paymentUpdateAnchorDate)
-        ) {
+        const history = (Array.isArray(enrollment.payment_history) ? enrollment.payment_history : [])
+          .filter((entry) => Number(entry.paid_amount ?? entry.amount) > 0 && !["failed", "pending", "cancelled"].includes(String(entry.status || "Paid").toLowerCase()))
+          .sort((a, b) => String(a.recorded_at || a.date).localeCompare(String(b.recorded_at || b.date)));
+        const entries = history.length ? history : [{ id: `balance-${amountPaid}-${paymentUpdateAnchorDate}`, date: paymentUpdateAnchorDate, amount: amountPaid, cumulative_paid: amountPaid }];
+        let cumulative = 0;
+        for (const entry of entries) {
+          // During staged rollout, only recorded transactions are eligible; do not backfill old opening balances.
+          if (paymentRemindersOnly && !entry.recorded_at) continue;
+          if (requestBody.paymentEntryId && entry.id !== requestBody.paymentEntryId) continue;
+          const received = Number(entry.paid_amount ?? entry.amount);
+          cumulative = Number(entry.cumulative_paid) || cumulative + received;
+          const eventTimestamp = entry.recorded_at || enrollment.student_form_submitted_at || enrollment.created_at;
+          if (!isNewNotification(eventTimestamp)) continue;
+          const eventKey = `payment:${enrollment.id}:${entry.id || `${entry.date}:${cumulative}`}`;
+          const successful = getEnrollmentLogs(emailLogs, enrollment.id, isPaymentUpdateEmailLog);
+          const alreadySent = successful.some((log) => log.event_key === eventKey || history.some((later) =>
+            Number(later.cumulative_paid) > cumulative && log.event_key === `payment:${enrollment.id}:${later.id || `${later.date}:${later.cumulative_paid}`}`
+          ) || (!log.event_key && (
+            entry.recorded_at ? new Date(log.sent_at || 0).valueOf() >= new Date(entry.recorded_at).valueOf()
+              : compareIsoDates(log.sent_at || "", entry.date || paymentUpdateAnchorDate) >= 0
+          )));
+          if (alreadySent || !entry.date) continue;
           await dispatchOne({
-            enrollment,
+            enrollment: { ...enrollment, amount_paid: cumulative,
+              payment_status: cumulative >= Number(enrollment.total_fee) ? "Paid" : "Partial",
+              last_payment_date: entry.date },
             student,
             course,
             kind: "payment_update",
+            eventKey,
+            receivedAmount: received,
           });
         }
       }
@@ -1374,7 +1467,10 @@ Deno.serve(async (request) => {
       const reminderWindow = getEmiReminderWindow(enrollment.enrolled_date || enrollment.lead_date || "", todayIsoDate);
       const remainingAmount = resolveRemainingAmount(enrollment.total_fee, enrollment.amount_paid) ?? 0;
       if (
-        reminderWindow.isReminderDueToday
+        !receiptsOnly
+        && reminderWindow.isReminderDueToday
+        && (!enrollment.next_due_date || compareIsoDates(enrollment.next_due_date, todayIsoDate) <= 0)
+        && (!enrollment.last_payment_date || compareIsoDates(enrollment.last_payment_date, reminderWindow.cycleDueDate) < 0)
         && remainingAmount > 0
         && String(enrollment.payment_status || "").trim() !== "Paid"
         && !hasSuccessfulEmailOnDate(emailLogs, enrollment.id, isPaymentReminderEmailLog, todayIsoDate)
@@ -1390,6 +1486,7 @@ Deno.serve(async (request) => {
 
     return response(200, {
       ok: true,
+      dryRun,
       dispatchedCount: dispatched.length,
       dispatched,
       failures,
@@ -1399,7 +1496,9 @@ Deno.serve(async (request) => {
   } catch (error) {
     return response(500, {
       ok: false,
-      message: error instanceof Error ? error.message : "Unexpected automation dispatch failure.",
+      message: error && typeof error === "object" && "message" in error
+        ? String(error.message)
+        : "Unexpected automation dispatch failure.",
     });
   }
 });

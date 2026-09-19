@@ -22,6 +22,7 @@ function harness(today = "2026-09-12") {
   const state = { enrollments: [], students: [], courses: [], emailLogs: [] };
   const sandbox = {
     state, toIsoDate, getEmiReminderWindow, resolveRemainingAmount,
+    SERVER_SIDE_PAYMENT_REMINDERS_ENABLED: false,
     getTodayIsoDate: () => today,
     formatDate: (value) => value,
     findRelatedCoursesForEnrollment: () => [],
@@ -126,6 +127,14 @@ test("failed and thrown sends release locks and retry on the next automatic chec
 test("fully paid enrollments do not receive automatic reminders", async () => {
   const h = harness();
   h.add("paid", "2026-08-12", { payment_status: "Paid", amount_paid: 52000 });
+  await h.run();
+  assert.equal(h.sent.length, 0);
+});
+
+test("browser does not send automatic reminders when the server scheduler owns them", async () => {
+  const h = harness();
+  h.add("today", "2026-08-12");
+  h.sandbox.SERVER_SIDE_PAYMENT_REMINDERS_ENABLED = true;
   await h.run();
   assert.equal(h.sent.length, 0);
 });

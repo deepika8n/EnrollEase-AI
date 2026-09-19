@@ -139,6 +139,27 @@ export function resolveRemainingAmount(totalFee, amountPaid) {
   return Math.max(feeValue - (toNumberOrNull(amountPaid) || 0), 0);
 }
 
+// Count recorded payments, rather than dividing money received by an estimated EMI.
+// An outstanding balance always has at least one future installment available.
+export function resolveInstallmentProgress(enrollment = {}, additionalAmount = 0) {
+  const currentPaid = resolveAmountPaid(enrollment.amount_paid, enrollment.payment_history);
+  const history = parsePaymentHistory(enrollment.payment_history).filter((entry) =>
+    (toNumberOrNull(entry.paid_amount ?? entry.amount) || 0) > 0
+    && !["failed", "pending", "cancelled"].includes(String(entry.status || "Paid").toLowerCase()));
+  const recordedCount = Math.max(0, Number(enrollment.installments_paid) || 0,
+    history.length, ...history.map((entry) => Number(entry.installments_paid) || 0), currentPaid > 0 ? 1 : 0);
+  const installmentsPaid = recordedCount + (additionalAmount > 0 ? 1 : 0);
+  const remaining = Math.max(0, Math.round((Number(enrollment.total_fee || 0) - currentPaid - additionalAmount) * 100) / 100);
+  const originalPlanned = Math.max(1, Number(enrollment.installments_planned) || 1);
+  const installmentsPlanned = remaining > 0
+    ? Math.max(originalPlanned, installmentsPaid + 1)
+    : Math.max(installmentsPaid, 1);
+  const paymentPlan = isEmiEnrollment(enrollment) || installmentsPlanned > 1 || installmentsPaid > 1 ? "EMI" : "One Time";
+  const remainingInstallments = remaining > 0 ? Math.max(installmentsPlanned - installmentsPaid, 1) : 0;
+  return { paymentPlan, installmentsPaid, installmentsPlanned, remainingInstallments,
+    installmentAmount: remainingInstallments ? Math.round(remaining / remainingInstallments * 100) / 100 : 0 };
+}
+
 export function normalizeDiscountType(value = "") {
   const normalized = String(value || "").trim().toLowerCase();
   if (normalized.includes("percent") || normalized.includes("%")) return "Percentage";

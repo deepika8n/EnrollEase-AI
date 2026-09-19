@@ -3,12 +3,8 @@ import { normalizeBatchName } from "../data/courseCatalog";
 import { isHiddenDropoutStudent } from "../utils/dropoutVisibility";
 import { resolveAmountPaid, resolveRemainingAmount } from "../utils/paymentHelpers";
 
-const AI_API_KEY = String(import.meta.env.VITE_AI_API_KEY || "").trim();
-const AI_MODEL = String(import.meta.env.VITE_AI_MODEL || "gpt-4o-mini").trim();
-const AI_API_URL = String(import.meta.env.VITE_AI_API_URL || "https://api.openai.com/v1/chat/completions").trim();
-const GEMINI_API_KEY = String(import.meta.env.VITE_GEMINI_API_KEY || "").trim();
-const GEMINI_MODEL = String(import.meta.env.VITE_GEMINI_MODEL || "gemini-3.5-flash").trim();
-const GEMINI_API_URL = String(import.meta.env.VITE_GEMINI_API_URL || "https://generativelanguage.googleapis.com/v1beta").trim();
+import { supabase } from "../lib/supabase";
+
 const MAX_MATCHED_RESULTS = 8;
 
 function normalizeText(value = "") {
@@ -565,15 +561,7 @@ function buildUserPrompt({ intent, query, portalRecord, matchedRecords, sourceSu
 }
 
 function getConfiguredAiProvider() {
-  if (GEMINI_API_KEY) {
-    return "gemini";
-  }
-
-  if (AI_API_KEY) {
-    return "openai";
-  }
-
-  return "";
+  return supabase ? "server" : "";
 }
 
 function buildAgentRecordCatalog(records = []) {
@@ -684,89 +672,14 @@ function formatProviderError(errorText = "", fallbackMessage = "AI response coul
   return createAiError(message || fallbackMessage, code, status, retryAfterSeconds);
 }
 
-async function requestOpenAiCopilot(prompt) {
-  const response = await fetch(AI_API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${AI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: AI_MODEL,
-      temperature: 0.2,
-      messages: [
-        { role: "system", content: `${buildSystemPrompt()} Reply in strict JSON only.` },
-        { role: "user", content: prompt },
-      ],
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => "");
-    throw formatProviderError(errorText, "OpenAI response could not be generated.");
-  }
-
-  const payload = await response.json();
-  const message = payload?.choices?.[0]?.message?.content;
-  if (!normalizeText(message)) throw new Error("OpenAI response was empty.");
-  return parseStructuredAgentResponse(message);
-}
-
-async function requestGeminiCopilot(prompt) {
-  const response = await fetch(`${GEMINI_API_URL}/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-goog-api-key": GEMINI_API_KEY,
-    },
-    body: JSON.stringify({
-      generationConfig: {
-        temperature: 0.2,
-        responseMimeType: "application/json",
-      },
-      contents: [
-        {
-          role: "user",
-          parts: [
-            {
-              text: `${buildSystemPrompt()}\nReturn strict JSON only.\n\n${prompt}`,
-            },
-          ],
-        },
-      ],
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => "");
-    throw formatProviderError(errorText, "Gemini response could not be generated.");
-  }
-
-  const payload = await response.json();
-  const message = payload?.candidates?.[0]?.content?.parts?.map((part) => part?.text || "").join("\n");
-  if (!normalizeText(message)) throw new Error("Gemini response was empty.");
-  return parseStructuredAgentResponse(message);
-}
-
 async function requestRemoteCopilot({ intent, query, portalRecord, portalRecords, sourceSummary }) {
-  const provider = getConfiguredAiProvider();
-  const prompt = buildStructuredAgentPrompt({
-    intent,
-    query,
-    portalRecord,
-    portalRecords,
-    sourceSummary,
+  const prompt = buildStructuredAgentPrompt({ intent, query, portalRecord, portalRecords, sourceSummary });
+  const { data, error } = await supabase.functions.invoke("ai-copilot", {
+    body: { prompt, system: buildSystemPrompt() },
   });
-
-  if (provider === "gemini") {
-    return requestGeminiCopilot(prompt);
-  }
-
-  if (provider === "openai") {
-    return requestOpenAiCopilot(prompt);
-  }
-
-  throw new Error("No AI provider configured.");
+  if (error) throw new Error("AI service is unavailable. Check your sign-in and server configuration.");
+  if (data?.error) throw formatProviderError(JSON.stringify(data));
+  return parseStructuredAgentResponse(data?.message || "");
 }
 
 function buildFallbackResponse({ intent, query, portalRecord, matchedRecords, sourceSummary }) {
@@ -1003,7 +916,7 @@ export async function generateAdmissionsCopilotResponse({
   if (!getConfiguredAiProvider()) {
     return {
       mode: "ai_not_configured",
-      answer: "AI agent is not configured yet. Add VITE_GEMINI_API_KEY for Gemini free tier or VITE_AI_API_KEY for OpenAI.",
+      answer: "AI agent is not configured yet. Connect Supabase and configure the AI provider secret on the server.",
       matchedRecords: [],
       insights: [],
       suggestions: ["Add a real AI key to the environment and restart the app."],

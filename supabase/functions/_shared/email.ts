@@ -1,4 +1,5 @@
 import nodemailer from "npm:nodemailer@6.9.14";
+import { deliverOnce } from "./durableEmail.ts";
 
 type MailAddress = string | string[] | undefined;
 
@@ -9,6 +10,10 @@ export type EmailAttachment = {
 };
 
 export type EmailPayload = {
+  enrollmentPatch?: Record<string, unknown>;
+  deliveryKey?: string;
+  enrollmentId?: string;
+  emailType?: string;
   to: MailAddress;
   subject: string;
   html?: string;
@@ -66,6 +71,7 @@ async function sendWithResend(payload: EmailPayload) {
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
+      ...(payload.deliveryKey ? { "Idempotency-Key": payload.deliveryKey } : {}),
     },
     body: JSON.stringify({
       from,
@@ -86,7 +92,7 @@ async function sendWithResend(payload: EmailPayload) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const message = String(data?.message || data?.error || `Resend request failed with ${response.status}.`);
-    throw new Error(message);
+    throw Object.assign(new Error(message), { deliveryRejected: true });
   }
 
   return {
@@ -139,7 +145,7 @@ async function sendWithSmtp(payload: EmailPayload) {
   };
 }
 
-export async function sendEmail(payload: EmailPayload) {
+async function sendEmailDirect(payload: EmailPayload) {
   const recipients = normalizeAddressList(payload.to);
   if (!recipients.length) {
     throw new Error("Email recipient is missing.");
@@ -162,6 +168,10 @@ export async function sendEmail(payload: EmailPayload) {
   throw new Error(
     "No email provider is configured. Set RESEND_API_KEY and MAIL_FROM_EMAIL, or SMTP_HOST/SMTP_USER/SMTP_PASS/MAIL_FROM_EMAIL.",
   );
+}
+
+export async function sendEmail(payload: EmailPayload) {
+  return deliverOnce(payload, sendEmailDirect);
 }
 
 export function getAdminNotificationEmail() {

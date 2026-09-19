@@ -2,6 +2,11 @@ function padNumber(value) {
   return String(value).padStart(2, "0");
 }
 
+function checkedDate(year, month, day) {
+  const date = new Date(Number(year), Number(month) - 1, Number(day));
+  return date.getFullYear() === Number(year) && date.getMonth() === Number(month) - 1 && date.getDate() === Number(day) ? date : null;
+}
+
 export function parseDateValue(value) {
   if (!value) return null;
 
@@ -14,13 +19,13 @@ export function parseDateValue(value) {
     const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (match) {
       const [, year, month, day] = match;
-      return new Date(Number(year), Number(month) - 1, Number(day));
+      return checkedDate(year, month, day);
     }
 
     const dayFirstMatch = value.match(/^(\d{2})[-/](\d{2})[-/](\d{4})$/);
     if (dayFirstMatch) {
       const [, day, month, year] = dayFirstMatch;
-      return new Date(Number(year), Number(month) - 1, Number(day));
+      return checkedDate(year, month, day);
     }
   }
 

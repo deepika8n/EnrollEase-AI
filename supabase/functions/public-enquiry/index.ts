@@ -391,6 +391,8 @@ Deno.serve(async (request) => {
 
     try {
       await sendEmail({
+        enrollmentId: insertedEnrollment.id,
+        emailType: "Enquiry Acknowledgement",
         to: email,
         subject: studentEmail.subject,
         html: studentEmail.html,
@@ -416,6 +418,8 @@ Deno.serve(async (request) => {
 
     try {
       await sendEmail({
+        enrollmentId: insertedEnrollment.id,
+        emailType: "Admin New Enquiry Alert",
         to: getAdminNotificationEmail(),
         subject: adminEmail.subject,
         html: adminEmail.html,

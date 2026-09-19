@@ -56,10 +56,19 @@ Deno.serve(async (request) => {
     return new Response("ok", { headers: JSON_HEADERS });
   }
 
+  if (request.method !== "POST") return response(405, { ok: false, error: "POST required." });
+  // A valid anonymous project JWT is public configuration, not a signed-in user.
+  const token = (request.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
+  const authClient = createClient(Deno.env.get("SUPABASE_URL") || "", Deno.env.get("SUPABASE_ANON_KEY") || "");
+  const { data: authData, error: authError } = await authClient.auth.getUser(token);
+  if (authError || !authData.user) return response(401, { ok: false, error: "Sign in to send email." });
+
   const body = await request.json().catch(() => ({})) as Record<string, unknown>;
 
   try {
     const result = await sendEmail({
+      enrollmentId: sanitizeString(body.enrollment_id),
+      emailType: sanitizeString(body.email_type),
       to: body?.to,
       cc: body?.cc,
       bcc: body?.bcc,
@@ -76,7 +85,7 @@ Deno.serve(async (request) => {
         : [],
     });
 
-    const logged = await persistEmailLogIfRequested(body, "Sent").catch(() => false);
+    const logged = result.skipped || await persistEmailLogIfRequested(body, "Sent").catch(() => false);
 
     return response(200, {
       ok: true,

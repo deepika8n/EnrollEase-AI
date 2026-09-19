@@ -1,0 +1,10 @@
+.env
+.env.*
+tmp/
+node_modules/
+dist/
+.git/
+supabase/
+tests/
+exam viva/
+docs/

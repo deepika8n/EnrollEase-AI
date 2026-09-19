@@ -158,6 +158,9 @@ export function getEnrollmentTimelineValidationErrors({
   const normalizedStage = normalizeStageValue(pipelineStage);
   const normalizedPaymentPlan = String(paymentPlan || "").trim().toUpperCase();
   const needsEnrolledDate = requireEnrolledDate || normalizedStage === "Enrolled";
+  for (const [field, value] of Object.entries({ lead_date: leadDate, enrolled_date: enrolledDate, follow_up_date: followUpDate, last_payment_date: lastPaymentDate, next_due_date: nextDueDate })) {
+    if (value && !toIsoDate(value)) errors[field] = "Enter a valid calendar date.";
+  }
 
   if (requireLeadDate && !normalizedLeadDate) {
     errors.lead_date = "Lead date is required.";

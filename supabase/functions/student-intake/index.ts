@@ -1,5 +1,8 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { getAdminNotificationEmail, sendEmail } from "../_shared/email.ts";
+import { resolveInstallmentProgress, resolveNextDueDate as scheduledDueDate } from "../../../src/utils/paymentHelpers.js";
+import { toIsoDate as strictIsoDate } from "../../../src/utils/dateMath.js";
+import { getEnrollmentTimelineValidationMessage } from "../../../src/utils/enrollmentDateValidation.js";
 
 declare const Deno: {
   env: {
@@ -118,7 +121,7 @@ function toIsoDate(value: string | Date | null | undefined) {
 
   const safeValue = String(value).trim();
   if (!safeValue) return "";
-  if (/^\d{4}-\d{2}-\d{2}$/.test(safeValue)) return safeValue;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(safeValue)) return strictIsoDate(safeValue);
   const parsed = new Date(safeValue);
   return Number.isNaN(parsed.valueOf()) ? "" : parsed.toISOString().slice(0, 10);
 }
@@ -555,10 +558,11 @@ Deno.serve(async (request) => {
         return response(400, { error: "Student photo and Aadhaar upload are required." });
       }
 
-      const leadDate = toIsoDate(enrollmentPatch.lead_date || enrollment.lead_date || new Date());
-      const enrolledDate = toIsoDate(enrollmentPatch.enrolled_date || enrollment.enrolled_date || new Date());
+      const indiaToday = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+      const leadDate = toIsoDate(enrollmentPatch.lead_date || enrollment.lead_date || indiaToday);
+      const enrolledDate = toIsoDate(enrollmentPatch.enrolled_date || enrollment.enrolled_date || indiaToday);
       const batch = sanitizeString(enrollmentPatch.batch || enrollment.batch);
-      const paymentPlan = sanitizeString(enrollmentPatch.payment_plan || enrollment.payment_plan || "One Time");
+      const requestedPlan = sanitizeString(enrollmentPatch.payment_plan || enrollment.payment_plan || "One Time");
       const paymentMethod = sanitizeString(enrollmentPatch.payment_method || enrollment.payment_method || "UPI");
       const originalFee = toNumber(enrollmentPatch.original_fee ?? enrollment.original_fee ?? enrollmentPatch.total_fee ?? enrollment.total_fee, 0);
       const discountType = normalizeDiscountType(enrollmentPatch.discount_type ?? enrollment.discount_type);
@@ -566,19 +570,30 @@ Deno.serve(async (request) => {
       const discountAmount = resolveDiscountAmount(originalFee, discountType, discountValue);
       const totalFee = resolvePayableFee(originalFee, discountType, discountValue);
       const amountPaid = toNumber(enrollmentPatch.amount_paid ?? enrollment.amount_paid, 0);
-      const installmentsPlanned = paymentPlan === "EMI"
-        ? Math.max(toNumber(enrollmentPatch.installments_planned ?? enrollment.installments_planned, 3), 1)
-        : 1;
-      const installmentAmount = paymentPlan === "EMI"
-        ? toNumber(enrollmentPatch.installment_amount ?? enrollment.installment_amount, 0)
-        : 0;
+      const requestedInstallments = Number(enrollmentPatch.installments_planned ?? enrollment.installments_planned ?? 1);
+      const rawPaid = Number(enrollmentPatch.amount_paid ?? enrollment.amount_paid ?? 0);
+      if (!Number.isFinite(rawPaid) || rawPaid < 0 || Math.abs(rawPaid * 100 - Math.round(rawPaid * 100)) > 0.000001) {
+        return response(400, { error: "Amount paid must be a non-negative amount with at most two decimal places." });
+      }
+      if (!["One Time", "EMI"].includes(requestedPlan) || !["UPI", "Cash", "Bank Transfer", "Card", "Cheque"].includes(paymentMethod)) {
+        return response(400, { error: "Choose a valid payment plan and payment method." });
+      }
+      if (requestedPlan === "EMI" && (!Number.isInteger(requestedInstallments) || requestedInstallments <= 0)) {
+        return response(400, { error: "Number of installments must be a positive whole number." });
+      }
+      const progress = resolveInstallmentProgress({ total_fee: totalFee, amount_paid: amountPaid,
+        payment_plan: requestedPlan, installments_planned: requestedPlan === "EMI" ? requestedInstallments : 1 });
+      const { paymentPlan, installmentsPlanned, installmentAmount, installmentsPaid } = progress;
       const lastPaymentDate = amountPaid > 0
         ? toIsoDate(enrollmentPatch.last_payment_date || enrollment.last_payment_date || enrolledDate)
         : "";
-      const nextDueDate = paymentPlan === "EMI"
-        ? toIsoDate(enrollmentPatch.next_due_date || enrollment.next_due_date)
+      const nextDueDate = paymentPlan === "EMI" && amountPaid < totalFee
+        ? toIsoDate(enrollmentPatch.next_due_date || enrollment.next_due_date || scheduledDueDate({ paymentStatus: "Partial", paymentPlan, lastPaymentDate, enrolledDate, today: indiaToday }))
         : "";
       const paymentStatus = normalizePaymentStatus(totalFee, amountPaid);
+      const timelineError = getEnrollmentTimelineValidationMessage({ leadDate, enrolledDate, lastPaymentDate, nextDueDate,
+        paymentPlan, pipelineStage: "Enrolled", requireLeadDate: true, requireEnrolledDate: true, today: indiaToday });
+      if (timelineError) return response(400, { error: timelineError });
 
       if (!leadDate) {
         return response(400, { error: "Lead date is required." });
@@ -607,7 +622,7 @@ Deno.serve(async (request) => {
       if (paymentPlan === "EMI" && installmentsPlanned <= 0) {
         return response(400, { error: "Number of installments must be greater than zero for EMI payments." });
       }
-      if (paymentPlan === "EMI" && amountPaid > 0 && !nextDueDate) {
+      if (paymentPlan === "EMI" && amountPaid > 0 && amountPaid < totalFee && !nextDueDate) {
         return response(400, { error: "Next due date is required after recording an EMI payment." });
       }
 
@@ -674,6 +689,7 @@ Deno.serve(async (request) => {
         total_fee: totalFee,
         amount_paid: amountPaid,
         installments_planned: installmentsPlanned,
+        installments_paid: installmentsPaid,
         installment_amount: installmentAmount,
         next_due_date: nextDueDate || null,
         payment_status: paymentStatus,
@@ -732,56 +748,25 @@ Deno.serve(async (request) => {
         })
         : null;
 
-      await sendEmail({
-        to: email,
-        subject: studentAck.subject,
-        html: studentAck.html,
-        text: studentAck.text,
-        replyTo: getAdminNotificationEmail(),
-      });
-
-      await sendEmail({
-        to: getAdminNotificationEmail(),
-        subject: adminAlert.subject,
-        html: adminAlert.html,
-        text: adminAlert.text,
-        replyTo: email,
-      });
-
-      if (paymentEmail) {
-        await sendEmail({
-          to: email,
-          subject: paymentEmail.subject,
-          html: paymentEmail.html,
-          text: paymentEmail.text,
-          replyTo: getAdminNotificationEmail(),
+      const emailFailures: string[] = [];
+      async function sendSubmissionEmail(emailType: string, to: string, message: { subject: string; html: string; text: string }, replyTo: string) {
+        let status = "Sent";
+        try {
+          await sendEmail({ to, ...message, replyTo, enrollmentId, emailType });
+        } catch {
+          status = "Failed";
+          emailFailures.push(emailType);
+        }
+        const { error } = await adminClient.from("email_logs").insert({
+          enrollment_id: enrollmentId, email_type: emailType, status, sent_at: new Date().toISOString(),
         });
+        if (error) emailFailures.push(`${emailType} log`);
       }
+      await sendSubmissionEmail("Student Enrollment Submitted", email, studentAck, getAdminNotificationEmail());
+      await sendSubmissionEmail("Admin Enrollment Submission Alert", getAdminNotificationEmail(), adminAlert, email);
+      if (paymentEmail) await sendSubmissionEmail("Payment Update", email, paymentEmail, getAdminNotificationEmail());
 
-      await adminClient.from("email_logs").insert([
-        {
-          enrollment_id: enrollmentId,
-          email_type: "Student Enrollment Submitted",
-          status: "Sent",
-          sent_at: new Date().toISOString(),
-        },
-        {
-          enrollment_id: enrollmentId,
-          email_type: "Admin Enrollment Submission Alert",
-          status: "Sent",
-          sent_at: new Date().toISOString(),
-        },
-        paymentEmail
-          ? {
-            enrollment_id: enrollmentId,
-            email_type: "Payment Update",
-            status: "Sent",
-            sent_at: new Date().toISOString(),
-          }
-          : null,
-      ].filter(Boolean));
-
-      return response(200, { ok: true });
+      return response(200, { ok: true, emailFailures });
     }
 
     return response(400, { error: "Unsupported student intake action." });

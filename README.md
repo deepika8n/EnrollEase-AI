@@ -1,148 +1,66 @@
 # EnrollEase AI
 
-EnrollEase AI is an agentic student enrollment management and automation portal for institutes, academies, coaching centers, training providers, and colleges. It combines a modern React frontend with Supabase-ready backend integrations so teams can manage enquiry, enrollment, payments, PDF generation, communication, and AI-assisted workflow support from one place.
+Student admissions portal built with React, Vite, Tailwind CSS and Supabase. It manages enquiries, secure student intake, enrollments, documents, payments, PDFs, email communication and AI-assisted admissions review.
 
-Live production URL: https://enroll-ease-ai.vercel.app
+Existing production site: https://enroll-ease-ai.vercel.app
 
-## Problem Statement
+## Run locally
 
-Educational organizations often manage admissions across forms, spreadsheets, phone calls, payments, and manual follow-ups. This creates missed follow-ups, scattered records, payment confusion, and repeated manual work. EnrollEase AI solves this by centralizing the full admission flow and adding an AI-assisted action workflow for admins.
+Use Node.js 24 and npm. Create an ignored `.env` with `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` for the project. These are public client configuration; never put service-role, email-provider or AI secrets in `VITE_` variables.
 
-## Features
-
-- Role-based login experience for Admin, Staff, and Student
-- Dashboard views for enrollment metrics, payment status, follow-ups, and course demand
-- Multi-section enrollment form for student, guardian, course, batch, payment, and remarks
-- Public enquiry form and secure student intake form
-- Document upload center with Supabase Storage integration points
-- Enrollment records table with search, filters, and action buttons
-- Student profile page with documents, timeline, payment history, and PDF generation
-- Native Supabase email and automation flow for enquiry, follow-up, enrollment, and payment communication
-- Optional Supabase server-side automation dispatcher for unattended follow-up and payment reminder runs
-- AI Copilot workspace for summaries, next steps, follow-up drafts, and priority review
-- Admissions Action Agent that observes records, reasons over priority, plans actions, executes admin-approved follow-up/payment/reactivation emails, and marks completed actions
-- Sample data for courses, enrollments, documents, and email logs
-
-## Tech Stack
-
-- Frontend: React.js + Vite
-- Styling: Tailwind CSS
-- Backend / Database: Supabase PostgreSQL
-- Authentication: Supabase Auth-ready structure
-- Storage: Supabase Storage-ready helpers
-- PDF Generation: jsPDF and PDF preview support
-- Automation: Supabase Edge Functions + scheduled dispatch
-- Agentic AI: admissions action planner with human-approved tool execution
-- Hosting: Vercel
-- Version Control: GitHub
-
-## AI Copilot And Action Agent
-
-EnrollEase AI includes two related AI experiences inside the AI Copilot page:
-
-- `Ask agent`: answers questions, summarizes selected records, suggests next steps, and drafts messages.
-- `Run action agent`: scans current records and prepares an executable action plan for priority work such as dropout reactivation emails and payment reminders.
-
-The action agent follows this loop:
-
-1. Observes current enrollment, payment, follow-up, and dropout records.
-2. Reasons over urgency, payment due amount, status, and follow-up dates.
-3. Plans the next best action for priority students.
-4. Uses existing app tools to send payment reminders, admission follow-ups, or reactivation emails after admin approval.
-5. Marks completed actions in the workflow UI and logs communication through the app email flow.
-
-The `Run action agent` button prepares the plan. The actual action is performed only when the admin clicks a workflow button such as `Send reactivation email` or `Execute payment reminder`.
-
-AI model usage is optional and controlled by environment variables. If `VITE_GEMINI_API_KEY` is configured, Gemini is used first. If `VITE_AI_API_KEY` is configured, the OpenAI-compatible chat completion endpoint is used. If no AI key is configured, the app still provides local guided responses from the student records. Email sending uses the mail/Supabase automation flow, not the AI key directly.
-
-The document upload process is intentionally not part of the action agent because Aadhaar and student photo uploads are already required during enrollment completion.
-
-## Project Structure
-
-```text
-.
-|-- .env.example
-|-- index.html
-|-- package.json
-|-- postcss.config.js
-|-- tailwind.config.js
-|-- vite.config.js
-|-- src
-|   |-- components
-|   |-- context
-|   |-- data
-|   |-- lib
-|   |-- pages
-|   |-- services
-|   `-- utils
-|-- supabase
-|   |-- functions
-|   `-- schema.sql
-`-- docs
+```sh
+npm ci
+npm run dev
+npm test
+npm run build
+npm run preview
 ```
 
-## Supabase Setup
+Without Supabase configuration, the application supports its local/sample-data mode. Production uses Supabase Auth, PostgreSQL, Storage and Edge Functions. Authenticated portal access is implemented; separate Admin/Staff/Student database permission levels are not claimed.
 
-1. Create a new Supabase project.
-2. Open the SQL editor and run `supabase/schema.sql`.
-3. Create a public storage bucket such as `enrollment-documents`.
-4. Copy `.env.example` to `.env` and add your project values.
+## Enrollment and payments
 
-Required frontend environment variables:
+Public enquiry creates a lead. A token-protected intake link lets the student submit enrollment details. The portal provides records, profiles, search, course/batch management, document uploads and enrollment PDF generation.
 
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_ANON_KEY`
-- `VITE_PUBLIC_APP_URL` set this to the deployed app URL so student enrollment links open outside the local machine
-- `VITE_GEMINI_API_KEY` optional, used first when configured
-- `VITE_GEMINI_MODEL` optional
-- `VITE_AI_API_KEY` optional OpenAI-compatible key
-- `VITE_AI_MODEL` optional OpenAI-compatible model, defaults to `gpt-4o-mini`
-- `VITE_SERVER_SIDE_AUTOMATIONS` optional, set to `true` after the Supabase cron dispatcher is deployed
+Use **Record Payment** from the payment tracker or student profile. Enter the amount actually received, payment date and method, then save. The application preserves payment history and records the entry timestamp. Dates and amounts are validated. A remote save fetches current history and guards the previous balance to reject conflicting updates.
 
-Supabase Edge Function secrets required for email delivery:
+Installment counts represent actual payment transactions. An initial payment counts as one. If two payments have been received but money remains, a two-installment plan extends to **2/3**. A further partial payment extends it to **3/4**. Full settlement clears the next due date and remaining installments. A partially paid one-time plan becomes EMI. The student profile and payment tracker use the same calculation.
 
-- `MAIL_FROM_EMAIL`
-- `ADMIN_NOTIFICATION_EMAIL`
-- either `RESEND_API_KEY`
-- or `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`
+## Email operation
 
-For unattended automation setup, use:
+**Send Mail** and **Send Confirmation** in Student Records/profile remain manual. Routine lifecycle messages cover enquiry acknowledgement, admin notices, follow-ups, submitted-intake notices, payment receipts/completion and due reminders. AI-generated custom campaigns still require an operator action.
 
-- `docs/supabase-server-automations.md`
-- `supabase/server_automations.sql`
+A single Supabase cron job runs every five minutes without an open browser. Database delivery claims prevent concurrent duplicate sends; payment receipts have separate transaction keys. Known provider rejections can retry. Ambiguous SMTP outcomes are held for review, because retrying an unconfirmed send can duplicate a delivered message.
 
-## How To Run Locally
+**Current rollout:** the new frontend is deployed and full server lifecycle scheduling is active. Production uses `VITE_SERVER_SIDE_AUTOMATIONS=true`, `VITE_SERVER_SIDE_PAYMENT_REMINDERS=true`, and server `AUTOMATION_PAYMENT_REMINDERS_ONLY=false`.
 
-1. Install dependencies with `npm install`.
-2. Start the dev server with `npm run dev`.
-3. Open the local Vite URL shown in the terminal.
+See [server setup](docs/supabase-server-automations.md) and [email audit](docs/email-automation-audit.md).
 
-The app is local-first by default. If Supabase environment variables are missing, it still runs using built-in sample data so the complete MVP can be explored immediately.
+## AI assistant
 
-## Deployment
+The browser invokes the authenticated `ai-copilot` Edge Function. Provider credentials belong in Supabase secrets (`GEMINI_API_KEY` or `AI_API_KEY`; optional `GEMINI_MODEL`/`AI_MODEL`). They are no longer read from client-side environment variables. Server credentials have been provisioned with user approval; the new browser bundle contains no configured AI key. The new production bundle removes the previous key. Provider-key rotation remains required because older copies may still exist. Local guidance remains available when the remote AI service cannot respond. Generated action plans require operator review/execution.
 
-The project is deployed on Vercel:
+## Validation and deployment
 
-- Production: https://enroll-ease-ai.vercel.app
-- Source control: GitHub repository `deepika8n/EnrollEase-AI`
-- Build command: `npm run build`
-- Output folder: `dist`
+`npm test` runs workflow tests using Node's test runner with mocked external delivery. Tests include payments, concurrency, date validation, intake, scheduling, duplicate protection, follow-up retry tokens, CSV parsing and PDF content generation. `npm run build` produces `dist/`; Vercel uses the repository's SPA routing configuration. Link/deploy to the existing `enroll-ease-ai` project, not a new project.
 
-The current workflow is GitHub-driven: after changes are pushed to `main`, Vercel automatically creates the production deployment.
+See [validation report](docs/validation-report.md) for current evidence and limitations. Mock validation created no live student payments or test emails. Separately, the user-requested missing receipt was delivered and a stale installment summary was corrected; see the validation report. Browser interaction and inbox delivery are separate checks and are not implied by a successful build.
 
-## Future Enhancements
+## Viva documentation
 
-- Real Supabase Auth signup and login flows
-- Live row-level security policies per role
-- Real document upload to Supabase Storage with previews
-- More advanced LLM-backed reasoning and analytics
-- Extended automation rules for PDF, email, and admin alerts
-- Analytics dashboards and downloadable reports
-- WhatsApp and SMS notification triggers
-- Payment gateway integration
+- [Questions and answers](exam%20viva/EnrollEase_AI_Viva_Questions.md)
+- [Demonstration checklist](exam%20viva/Demo_Checklist.md)
 
-## Notes
+Database setup is in `supabase/schema.sql`; incremental email tracking and delivery-guard migrations are in `supabase/email_automation_events.sql` and `supabase/email_delivery_guards.sql`. Scheduler setup is `supabase/payment_reminder_schedule.sql`; do not install overlapping legacy schedules.
 
-- The current implementation is beginner-friendly and structured around clear service boundaries.
-- The MVP is designed to be extended without changing the overall architecture.
-- The UI is responsive and optimized for a modern admissions portal experience.
+
+## Production rollout completed
+
+The updated frontend is live at https://enroll-ease-ai.vercel.app (deployment `dpl_Db2okjwhbz23XkwtH9c4qV12KKWM`). Vercel reported READY. Homepage, records and payments routes returned HTTP 200. The public bundle contains the new receipt workflow and authenticated AI endpoint, and no longer contains the configured AI key.
+
+Production `VITE_SERVER_SIDE_AUTOMATIONS=true` and `VITE_SERVER_SIDE_PAYMENT_REMINDERS=true` are configured. Supabase `AUTOMATION_PAYMENT_REMINDERS_ONLY=false` activates full lifecycle scheduling through the existing five-minute cron job. Send Mail and Send Confirmation remain manual. A live full-mode dry run scanned nine enrollments without failures. Stale opening receipts are suppressed when a newer cumulative-payment receipt has already been sent.
+
+All 53 automated tests pass. Interactive browser/visual verification and inbox placement remain separate, unverified checks. The previously exposed AI key still needs provider-side rotation, even though it is absent from the new public build.
+
+
+Historical notification protection: `AUTOMATION_NOTIFICATION_START_AT=2026-09-12T18:05:21.408Z` is a fixed event cutoff. The dispatcher does not backfill old enquiry acknowledgements, submission notices or payment receipts based only on missing logs. New recorded payments on existing enrollments remain eligible. Do not advance this cutoff on redeployment; newer failed notifications must remain recoverable. Scheduled due reminders and follow-ups retain their normal rules.

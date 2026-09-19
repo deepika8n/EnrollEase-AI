@@ -356,7 +356,7 @@ export default function StudentIntakePage() {
       if (form.payment_plan === "EMI" && Number(form.installments_planned || 0) <= 0) {
         throw new Error("Number of installments must be greater than zero for EMI payments.");
       }
-      if (form.payment_plan === "EMI" && amountPaidValue > 0 && !form.next_due_date) {
+      if (form.payment_plan === "EMI" && amountPaidValue > 0 && amountPaidValue < totalFeeValue && !form.next_due_date) {
         throw new Error("Next due date is required after recording an EMI payment.");
       }
 

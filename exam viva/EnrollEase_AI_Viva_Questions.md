@@ -74,9 +74,9 @@ The proposed system is EnrollEase AI, a web-based admission management portal. I
 
 - Supabase: Used as backend platform.
 - PostgreSQL: Used as the database through Supabase.
-- Supabase Auth: Used for authentication-ready admin/staff/student login structure.
+- Supabase Auth: Used for authenticated portal access.
 - Supabase Edge Functions: Used for mailer, public enquiry, student intake, and automation dispatch.
-- Supabase Storage-ready helpers: Used for handling student photo and Aadhaar document URLs.
+- Supabase Storage document helpers: Used for handling student photo and Aadhaar document URLs.
 - Vercel: Used for frontend hosting and production deployment.
 - GitHub: Used for source code version control.
 
@@ -257,7 +257,7 @@ If a student pays partially during enrollment, the system sends a payment receiv
 - Student intake form email: Sent to student to complete admission.
 - Student form submitted email: Sent after student submits intake form.
 - Admin alert email: Sent to admin after student form submission.
-- Admission confirmation email: Sent when student is enrolled.
+- Admission confirmation email: Sent only through the manual Send Confirmation button.
 - Payment received email: Sent when partial payment is recorded.
 - Payment cleared email: Sent when full payment is completed.
 - EMI reminder email: Sent when EMI due date arrives.
@@ -280,8 +280,8 @@ The normal AI Copilot is mainly for asking questions and drafting answers. The A
 
 The AI features can use API keys depending on configuration.
 
-- If `VITE_GEMINI_API_KEY` is configured, Gemini is used first for AI responses.
-- If `VITE_AI_API_KEY` is configured, the OpenAI-compatible chat completion endpoint is used.
+- If server secret `GEMINI_API_KEY` is configured, Gemini is used first for AI responses.
+- If server secret `AI_API_KEY` is configured, the OpenAI-compatible chat completion endpoint is used.
 - If no AI key is configured, the app still gives local guided responses from available records.
 - Email sending uses Supabase Edge Functions and email provider secrets, not the AI key directly.
 
@@ -295,12 +295,12 @@ The project is deployed on Vercel and source code is maintained on GitHub.
 - Repository: `deepika8n/EnrollEase-AI`
 - Build command: `npm run build`
 - Output folder: `dist`
-- Deployment workflow: changes are pushed to GitHub, and Vercel automatically deploys the updated production app.
+- Deployment workflow: changes can be pushed to GitHub for automatic Vercel deployment, or deployed directly using the Vercel CLI after verification.
 
 ## 17. Security Features
 
-- Supabase authentication-ready structure.
-- Role-based profile table for admin, staff, and student roles.
+- Supabase authentication for signed-in portal users.
+- Profile role metadata exists; separate role-level authorization is not claimed.
 - Row Level Security policies in Supabase schema.
 - Student intake uses token-based access.
 - Email and backend secrets are handled through environment variables.
@@ -553,7 +553,7 @@ It selects students based on conditions like dropout status, pending payment, pa
 
 ### 57. Is an API key used in the AI feature?
 
-Yes, if configured. The app can use `VITE_GEMINI_API_KEY` or `VITE_AI_API_KEY` for AI-generated responses. If no AI key is configured, the app still provides local guided responses.
+Yes, if configured. The app can use server secret `GEMINI_API_KEY` or server secret `AI_API_KEY` for AI-generated responses. If no AI key is configured, the app still provides local guided responses.
 
 ### 58. Is the same API key used to send email?
 
@@ -561,8 +561,53 @@ No. The AI key is for AI response generation. Email sending uses Supabase Edge F
 
 ### 59. How is the project deployed?
 
-The project is hosted on Vercel at `https://enroll-ease-ai.vercel.app`. The source code is pushed to GitHub, and Vercel deploys the production app from the GitHub repository.
+The project is hosted on Vercel at `https://enroll-ease-ai.vercel.app`. The source code is maintained in GitHub, and verified builds can be deployed through GitHub integration or the Vercel CLI.
 
 ### 60. What validation was done before deployment?
 
-The production build was tested using `npm run build`, local preview routes were checked, live Vercel routes were checked, and Git status was confirmed clean after committing and pushing.
+See docs/validation-report.md for the current checks. Automated workflow tests and the production build pass. The new Vercel deployment is complete and HTTP route/bundle checks pass. Interactive browser verification remains unverified.
+
+
+## September 2026 implementation corrections
+
+These answers take precedence over earlier architectural descriptions above. The portal uses Supabase Auth and Storage; it does not implement independently verified Admin/Staff/Student permission levels.
+
+### 61. Why can two planned installments become 2/3?
+
+The numerator counts actual received payments. The denominator automatically extends when a balance remains. Two received payments with an outstanding balance become 2/3; another partial payment becomes 3/4. Full settlement removes the remaining installment and next due date.
+
+### 62. How is payment history protected?
+
+The payment form saves actual amount, date and method with a recording timestamp. Server-backed saves fetch fresh history before calculating the update and condition the write on the old paid balance. A stale save fails rather than overwriting a newer payment.
+
+### 63. How can emails run when the portal is closed?
+
+A Supabase pg_cron job calls an authenticated dispatcher every five minutes. Full mode covers routine lifecycle communication. Current production runs full server lifecycle scheduling with manual Send Mail and Send Confirmation exceptions. Send Mail and Send Confirmation remain manual.
+
+### 64. How are duplicate emails avoided?
+
+A database claim is acquired before sending. Payments use transaction keys, reminders and follow-ups use daily keys, and generic identical messages share a short suppression window. Known rejections can retry. Uncertain SMTP results require delivery review before resending; exactly-once SMTP delivery is not guaranteed.
+
+### 65. How are follow-up links kept valid after a retry?
+
+The token hash and form validity metadata are stored under the delivery claim before transport. The retry payload retains the same metadata, so a later send does not contain a link whose token was never saved.
+
+### 66. Where are AI secrets stored?
+
+The new client calls an authenticated Supabase Edge Function. API keys belong only in server secrets, never VITE-prefixed browser configuration. Server credentials were configured with user approval. Authentication and mocked responses are tested; live model output has not been verified in the browser.
+
+### 67. What does the test suite prove?
+
+It verifies payment calculations and conflicts, intake/date rules, reminder timing, receipt keys, retry behavior, manual mail exclusions, CSV parsing and PDF content using mocks for external services. It does not prove real inbox delivery, visual layout, or a successful new Vercel rollout.
+
+
+## Production rollout completed
+
+The updated frontend is live at https://enroll-ease-ai.vercel.app (deployment `dpl_Db2okjwhbz23XkwtH9c4qV12KKWM`). Vercel reported READY. Homepage, records and payments routes returned HTTP 200. The public bundle contains the new receipt workflow and authenticated AI endpoint, and no longer contains the configured AI key.
+
+Production `VITE_SERVER_SIDE_AUTOMATIONS=true` and `VITE_SERVER_SIDE_PAYMENT_REMINDERS=true` are configured. Supabase `AUTOMATION_PAYMENT_REMINDERS_ONLY=false` activates full lifecycle scheduling through the existing five-minute cron job. Send Mail and Send Confirmation remain manual. A live full-mode dry run scanned nine enrollments without failures. Stale opening receipts are suppressed when a newer cumulative-payment receipt has already been sent.
+
+All 53 automated tests pass. Interactive browser/visual verification and inbox placement remain separate, unverified checks. The previously exposed AI key still needs provider-side rotation, even though it is absent from the new public build.
+
+
+Historical notification protection: `AUTOMATION_NOTIFICATION_START_AT=2026-09-12T18:05:21.408Z` is a fixed event cutoff. The dispatcher does not backfill old enquiry acknowledgements, submission notices or payment receipts based only on missing logs. New recorded payments on existing enrollments remain eligible. Do not advance this cutoff on redeployment; newer failed notifications must remain recoverable. Scheduled due reminders and follow-ups retain their normal rules.

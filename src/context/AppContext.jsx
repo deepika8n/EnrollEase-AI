@@ -27,6 +27,7 @@ import {
   getEmiReminderWindow,
   normalizePaymentHistoryList,
   resolveAmountPaid,
+  resolveInstallmentProgress,
   resolveDiscountAmount,
   resolveLastPaymentDate,
   resolveNextDueDate,
@@ -62,7 +63,10 @@ const SUPABASE_LOGIN_POLL_INTERVAL_MS = 1500;
 const AUTOMATION_RECHECK_INTERVAL_MS = 60 * 1000;
 const CRITICAL_REMOTE_TIMEOUT_MS = 15000;
 const DEFERRED_REMOTE_TIMEOUT_MS = 30000;
-const SERVER_SIDE_AUTOMATIONS_ENABLED = String(import.meta.env.VITE_SERVER_SIDE_AUTOMATIONS || "").trim().toLowerCase() === "true";
+const SERVER_SIDE_AUTOMATIONS_ENABLED = String(import.meta.env.VITE_SERVER_SIDE_AUTOMATIONS ?? "false").trim().toLowerCase() === "true";
+// Payment reminders run on Supabase even when the portal is closed.
+const SERVER_SIDE_PAYMENT_REMINDERS_ENABLED = hasSupabaseEnv
+  && String(import.meta.env.VITE_SERVER_SIDE_PAYMENT_REMINDERS ?? "true").trim().toLowerCase() === "true";
 const criticalPortalTables = [
   {
     key: "profiles",
@@ -189,6 +193,7 @@ const defaultState = {
   auditLogs: [],
   notifications: [],
   loading: true,
+  dataError: null,
 };
 
 const AppContext = createContext(null);
@@ -764,6 +769,7 @@ function clearSupabaseModeLocalData() {
   if (typeof window === "undefined") return;
 
   window.localStorage.removeItem(LOCAL_DB_KEY);
+  window.localStorage.removeItem(REMOTE_STATE_CACHE_KEY);
   window.localStorage.removeItem(SUPABASE_SHADOW_KEY);
   window.localStorage.removeItem(PAYMENT_REMINDER_LOCK_KEY);
 }
@@ -865,25 +871,6 @@ function buildLocalState(db, sessionEmail = "") {
     authUser: profile ? { id: profile.user_id, email: profile.email } : null,
     currentUser: profile,
     loading: false,
-  };
-}
-
-function buildSamplePortalState(sessionUser, baseState = {}) {
-  const sampleState = createDemoPortalState();
-  const currentUser = buildCurrentUserFallback(sessionUser) || sampleState.currentUser;
-
-  return {
-    ...baseState,
-    authUser: sessionUser || sampleState.authUser,
-    currentUser,
-    profiles: currentUser ? [currentUser] : sampleState.profiles,
-    students: sampleState.students,
-    courses: normalizeCourseRecords(sampleState.courses),
-    enrollments: sampleState.enrollments,
-    documents: normalizeDocumentsForDisplay(sampleState.documents, sampleState.enrollments),
-    emailLogs: sampleState.emailLogs,
-    auditLogs: sampleState.auditLogs,
-    isSampleData: true,
   };
 }
 
@@ -1357,7 +1344,7 @@ function hasEmailLogOnDate(emailLogs = [], enrollmentId = "", matcher = () => tr
 }
 
 function getSuccessfulFollowUpCount(emailLogs = [], enrollmentId = "") {
-  return getSuccessfulEnrollmentEmailLogs(emailLogs, enrollmentId, isFollowUpEmailLog).length;
+  return new Set(getSuccessfulEnrollmentEmailLogs(emailLogs, enrollmentId, isFollowUpEmailLog).map((log) => toIsoDate(log.sent_at))).size;
 }
 
 function matchesKnownNameToken(token = "", prefixes = []) {
@@ -1498,23 +1485,10 @@ function normalizeEnrollmentForDisplay(enrollment, course) {
     })
     : [];
   const amountPaid = paymentEligible ? resolveAmountPaid(enrollment?.amount_paid, basePaymentHistory) : 0;
-  const paymentPlan = paymentEligible
-    ? inferPaymentPlan({
-      paymentPlan: enrollment?.payment_plan || "",
-      installmentsPlanned: enrollment?.installments_planned || 0,
-      history: basePaymentHistory,
-      amountPaid,
-    })
-    : "";
-  const installmentsPlanned = paymentEligible
-    ? (Number(enrollment?.installments_planned) || (paymentPlan === "EMI" ? 3 : paymentPlan ? 1 : 0))
-    : 0;
-  const installmentAmount = paymentEligible
-    ? (
-      toNumberOrNull(enrollment?.installment_amount)
-      || (paymentPlan === "EMI" && installmentsPlanned ? Math.round((totalFee || 0) / installmentsPlanned) : totalFee || 0)
-    )
-    : 0;
+  const progress = resolveInstallmentProgress({ ...enrollment, total_fee: totalFee, amount_paid: amountPaid, payment_history: basePaymentHistory });
+  const paymentPlan = paymentEligible ? progress.paymentPlan : "";
+  const installmentsPlanned = paymentEligible ? progress.installmentsPlanned : 0;
+  const installmentAmount = paymentEligible ? progress.installmentAmount : 0;
   const latestPaymentEntry = paymentEligible
     ? getLatestPaymentEntry(basePaymentHistory, {
       totalFee,
@@ -1524,21 +1498,7 @@ function normalizeEnrollmentForDisplay(enrollment, course) {
       amountPaid,
     })
     : null;
-  const installmentsPaid = paymentEligible
-    ? (
-      Number.isFinite(Number(enrollment?.installments_paid))
-        ? Number(enrollment.installments_paid)
-        : Math.max(
-          latestPaymentEntry?.installments_paid || 0,
-          calculateInstallmentsPaid({
-            paymentPlan,
-            amountPaid,
-            installmentAmount,
-            installmentsPlanned,
-          }),
-        )
-    )
-    : 0;
+  const installmentsPaid = paymentEligible ? progress.installmentsPaid : 0;
   const paymentStatus = paymentEligible
     ? (enrollment?.payment_status || normalizePaymentStatus(totalFee, amountPaid))
     : "Pending";
@@ -1584,15 +1544,15 @@ function normalizeEnrollmentForDisplay(enrollment, course) {
       leadDate,
     })
     : "";
-  const nextDueDate = paymentEligible
-    ? resolveNextDueDate({
+  const nextDueDate = paymentEligible && paymentStatus !== "Paid" && paymentPlan === "EMI"
+    ? (toIsoDate(enrollment?.next_due_date || "") || resolveNextDueDate({
       paymentStatus,
       paymentPlan,
       lastPaymentDate,
       enrolledDate,
       today: getTodayIsoDate(),
       history: paymentHistory,
-    })
+    }))
     : "";
   const autoDropoutReason = isAutoDropoutReason(enrollment?.dropout_reason || "");
   const enrollmentStatus = pipelineStage === "Enquiry" && autoDropoutReason
@@ -1640,7 +1600,7 @@ function normalizeEnrollmentForDisplay(enrollment, course) {
   };
 }
 
-function buildRecordedPaymentState(enrollment, paymentMode = "UPI") {
+function buildRecordedPaymentState(enrollment, paymentMode = "UPI", details = {}) {
   const totalFee = toNumberOrNull(enrollment?.total_fee) || 0;
   const currentPaidAmount = resolveAmountPaid(enrollment?.amount_paid, enrollment?.payment_history);
   const dueAmount = resolveRemainingAmount(totalFee, currentPaidAmount) || 0;
@@ -1649,20 +1609,28 @@ function buildRecordedPaymentState(enrollment, paymentMode = "UPI") {
     history: enrollment?.payment_history || [],
     amountPaid: currentPaidAmount,
   });
-  const installmentsPlanned = enrollment?.installments_planned || (emiEnrollment ? 3 : 1);
   const plannedAmount = emiEnrollment
     ? toNumberOrNull(enrollment?.installment_amount) || dueAmount
     : dueAmount;
-  const paymentAmount = Math.min(dueAmount, plannedAmount);
-  const nextPaidAmount = currentPaidAmount + paymentAmount;
-  const nextInstallmentsPaid = emiEnrollment
-    ? Math.min((Number(enrollment?.installments_paid) || 0) + 1, Number(installmentsPlanned) || 0)
-    : nextPaidAmount > 0
-      ? 1
-      : 0;
+  const paymentAmount = details.amount === undefined ? Math.min(dueAmount, plannedAmount) : Number(details.amount);
+  if (!Number.isFinite(paymentAmount) || paymentAmount <= 0 || paymentAmount > dueAmount
+    || Math.abs(paymentAmount * 100 - Math.round(paymentAmount * 100)) > 0.000001) {
+    throw new Error("Enter a payment greater than zero, within the remaining balance, with at most two decimal places.");
+  }
+  const nextPaidAmount = Math.round((currentPaidAmount + paymentAmount) * 100) / 100;
+  const progress = resolveInstallmentProgress(enrollment, paymentAmount);
+  const { installmentsPaid: nextInstallmentsPaid, installmentsPlanned, paymentPlan } = progress;
   const nextStatus = normalizePaymentStatus(totalFee, nextPaidAmount);
-  const paymentDate = toIsoDate(new Date());
+  const today = getTodayIsoDate();
+  const paymentDate = details.paymentDate === undefined ? today : toIsoDate(details.paymentDate);
+  if (!paymentDate || (details.paymentDate && paymentDate !== details.paymentDate) || paymentDate > today
+    || paymentDate < toIsoDate(enrollment?.last_payment_date || enrollment?.enrolled_date || "")) {
+    throw new Error("Choose a valid payment date from the last recorded payment through today.");
+  }
   const paymentMethod = paymentMode || enrollment?.payment_method || "UPI";
+  if (!["UPI", "Cash", "Bank Transfer", "Card", "Cheque"].includes(paymentMethod)) {
+    throw new Error("Choose a payment method.");
+  }
   const existingPaymentHistory = normalizePaymentHistoryList(enrollment?.payment_history, {
     totalFee,
     paymentPlan: enrollment?.payment_plan || "",
@@ -1675,29 +1643,38 @@ function buildRecordedPaymentState(enrollment, paymentMode = "UPI") {
     amount: paymentAmount,
     amountPaidAfter: nextPaidAmount,
     totalFee,
-    paymentPlan: enrollment?.payment_plan || "",
+    paymentPlan,
     paymentMethod,
     installmentNumber: nextInstallmentsPaid,
     installmentsPlanned,
     paymentDate,
-    label: emiEnrollment ? `Installment ${nextInstallmentsPaid}` : "Balance Payment",
+    label: paymentPlan === "EMI" ? `Installment ${nextInstallmentsPaid}` : "Balance Payment",
     status: "Paid",
   });
+  nextPaymentEntry.recorded_at = new Date().toISOString();
+
+  const nextDueDate = nextStatus === "Paid" || paymentPlan !== "EMI" ? "" : (details.nextDueDate ?? resolveNextDueDate({
+    paymentStatus: nextStatus,
+    paymentPlan,
+    lastPaymentDate: paymentDate,
+    enrolledDate: enrollment?.enrolled_date || enrollment?.lead_date || "",
+    today,
+    history: [nextPaymentEntry, ...existingPaymentHistory],
+  }));
+  if (paymentPlan === "EMI" && nextStatus !== "Paid" && (!nextDueDate || toIsoDate(nextDueDate) !== nextDueDate || nextDueDate <= paymentDate)) {
+    throw new Error("Choose a next due date after this payment date.");
+  }
 
   return {
     amount_paid: nextPaidAmount,
     installments_paid: nextInstallmentsPaid,
+    installments_planned: installmentsPlanned,
+    installment_amount: progress.installmentAmount,
+    payment_plan: paymentPlan,
     payment_status: nextStatus,
     payment_method: paymentMethod,
     last_payment_date: paymentDate,
-    next_due_date: resolveNextDueDate({
-      paymentStatus: nextStatus,
-      paymentPlan: enrollment?.payment_plan || "",
-      lastPaymentDate: paymentDate,
-      enrolledDate: enrollment?.enrolled_date || enrollment?.lead_date || "",
-      today: getTodayIsoDate(),
-      history: [nextPaymentEntry, ...existingPaymentHistory],
-    }),
+    next_due_date: nextDueDate,
     payment_history: [nextPaymentEntry, ...existingPaymentHistory],
   };
 }
@@ -2085,8 +2062,7 @@ async function loadDeferredRemoteState() {
           ),
         ];
       } catch (error) {
-        console.warn(`Deferred Supabase load failed for ${table}:`, error);
-        return [key, []];
+        throw new Error(`Could not load ${table}. ${error.message || "Please try again."}`);
       }
     }),
   );
@@ -2137,24 +2113,16 @@ async function loadFullRemoteState(sessionUser) {
 }
 
 async function loadVerifiedRemoteState(sessionUser) {
-  const firstState = await loadFullRemoteState(sessionUser);
-  publishRuntimeDebugSnapshot("initial_remote_load", sessionUser, firstState);
-
-  if (hasMeaningfulPortalData(firstState)) {
-    return firstState;
-  }
-
-  await sleep(1200);
-  const recoveredSessionUser = await waitForSupabaseSession(sessionUser?.email || "", 3000) || sessionUser;
-  const secondState = await loadFullRemoteState(recoveredSessionUser);
-  publishRuntimeDebugSnapshot("retry_remote_load", recoveredSessionUser, secondState);
-  return secondState;
+  const remoteState = await loadFullRemoteState(sessionUser);
+  publishRuntimeDebugSnapshot("verified_remote_load", sessionUser, remoteState);
+  return remoteState;
 }
 
 export function AppProvider({ children }) {
   const [state, setState] = useState(defaultState);
   const [automationTick, setAutomationTick] = useState(() => Date.now());
   const refreshTracker = useRef({ key: null, promise: null });
+  const sessionGeneration = useRef(0);
   const autoEmailTracker = useRef({
     followUp: new Set(),
     paymentReminder: new Set(),
@@ -2377,153 +2345,56 @@ export function AppProvider({ children }) {
   };
 
   const refreshState = async (sessionUser, options = {}) => {
-    const { forceRemote = false } = options;
-    const refreshKey = sessionUser?.id || sessionUser?.email || "guest";
-
+    const refreshKey = sessionUser?.id || null;
     if (refreshTracker.current.promise && refreshTracker.current.key === refreshKey) {
       return refreshTracker.current.promise;
     }
+    if (!hasSupabaseEnv || !supabase) {
+      const localState = buildLocalState(ensureLocalDb(), sessionUser?.email || "");
+      setState((prev) => ({ ...localState, notifications: prev.notifications }));
+      return;
+    }
 
+    const generation = ++sessionGeneration.current;
+    const isCurrent = () => sessionGeneration.current === generation;
+    if (!sessionUser) {
+      refreshTracker.current = { key: null, promise: null };
+      setState((prev) => ({ ...defaultState, loading: false, notifications: prev.notifications }));
+      return;
+    }
+
+    // Never hydrate a live account from browser/demo snapshots. Commit only a
+    // complete server response; failed requests are not empty datasets.
+    setState((prev) => ({
+      ...(prev.authUser?.id === refreshKey ? prev : defaultState),
+      authUser: sessionUser,
+      currentUser: prev.authUser?.id === refreshKey ? prev.currentUser : null,
+      loading: true,
+      dataError: null,
+      notifications: prev.notifications,
+    }));
     const refreshPromise = (async () => {
-      if (!hasSupabaseEnv || !supabase) {
-        const db = ensureLocalDb();
-        const localState = buildLocalState(db, sessionUser?.email || "");
-        setState((prev) => ({ ...localState, notifications: prev.notifications }));
-        return;
+      try {
+        const remoteState = await loadVerifiedRemoteState(sessionUser);
+        if (!isCurrent()) return;
+        setState((prev) => isCurrent() ? ({
+          ...defaultState,
+          ...remoteState,
+          loading: false,
+          dataError: null,
+          notifications: prev.notifications,
+        }) : prev);
+      } catch (error) {
+        if (!isCurrent()) return;
+        setState((prev) => isCurrent() ? ({
+          ...prev,
+          loading: false,
+          dataError: "Your current data could not be loaded. Check your connection and retry.",
+        }) : prev);
+        throw error;
       }
-
-      window.localStorage.removeItem(SUPABASE_SHADOW_KEY);
-
-      if (!sessionUser) {
-        setState((prev) => ({ ...defaultState, loading: false, notifications: prev.notifications }));
-        return;
-      }
-      const cachedState = forceRemote ? null : readRemoteStateCache(sessionUser);
-      const hasUsableCache = !forceRemote && Boolean(cachedState && hasRemotePortalContent(cachedState));
-
-      if (!hasUsableCache) {
-        try {
-          const fullRemoteState = await loadVerifiedRemoteState(sessionUser);
-          setState((prev) => ({
-            ...prev,
-            ...(() => {
-              const nextState = {
-                ...fullRemoteState,
-                loading: false,
-              };
-
-              if (forceRemote && hasLinkedPortalRecords(prev.students, prev.enrollments) && !hasLinkedPortalRecords(nextState.students, nextState.enrollments)) {
-                return {
-                  ...nextState,
-                  students: prev.students,
-                  enrollments: prev.enrollments,
-                  documents: prev.documents,
-                };
-              }
-
-              return nextState;
-            })(),
-          }));
-          const cacheState = {
-            ...fullRemoteState,
-            loading: false,
-          };
-          if (!hasMeaningfulPortalData(cacheState)) {
-            const sampleState = buildSamplePortalState(sessionUser, {
-              courses: cacheState.courses,
-              loading: false,
-            });
-            setState((prev) => ({
-              ...sampleState,
-              notifications: prev.notifications,
-            }));
-            writeRemoteStateCache(sessionUser, sampleState);
-            return;
-          }
-
-          writeRemoteStateCache(sessionUser, cacheState);
-          return;
-        } catch (error) {
-          pushNotification({
-            type: "warning",
-            title: isTimeoutError(error)
-              ? "Supabase is responding slowly. Showing cached/local data while the app keeps trying in the background."
-              : error.message,
-          });
-          throw error;
-        } finally {
-          setState((prev) => ({ ...prev, loading: false }));
-        }
-      }
-
-      const fallbackCurrentUser = cachedState?.currentUser || buildCurrentUserFallback(sessionUser);
-
-      setState((prev) => ({
-        ...prev,
-        authUser: sessionUser,
-        currentUser: fallbackCurrentUser,
-        profiles: cachedState?.profiles || prev.profiles || [],
-        students: cachedState?.students || prev.students || [],
-        courses: cachedState?.courses || prev.courses || [],
-        enrollments: cachedState?.enrollments || prev.enrollments || [],
-        documents: cachedState?.documents || prev.documents || [],
-        emailLogs: cachedState?.emailLogs || prev.emailLogs || [],
-        auditLogs: cachedState?.auditLogs || prev.auditLogs || [],
-        loading: false,
-      }));
-
-      void (async () => {
-        try {
-          const criticalState = await loadCriticalRemoteState(sessionUser);
-          publishRuntimeDebugSnapshot("background_critical_load", sessionUser, criticalState);
-          setState((prev) => {
-            const activeUserKey = prev.authUser?.id || prev.authUser?.email || "guest";
-            if (activeUserKey !== refreshKey) {
-              return prev;
-            }
-
-            const nextState = {
-              ...prev,
-              ...criticalState,
-              students: prev.students,
-              enrollments: prev.enrollments,
-              documents: prev.documents,
-              emailLogs: prev.emailLogs,
-              auditLogs: prev.auditLogs,
-              loading: false,
-            };
-            writeRemoteStateCache(sessionUser, nextState);
-            return nextState;
-          });
-
-          const deferredState = await loadDeferredRemoteState();
-          publishRuntimeDebugSnapshot("background_deferred_load", sessionUser, {
-            ...criticalState,
-            ...deferredState,
-          });
-          setState((prev) => {
-            const activeUserKey = prev.authUser?.id || prev.authUser?.email || "guest";
-            if (activeUserKey !== refreshKey) {
-              return prev;
-            }
-
-            const mergedState = {
-              ...prev,
-              ...deferredState,
-              loading: false,
-            };
-            const nextState = mergedState;
-            writeRemoteStateCache(sessionUser, nextState);
-            return nextState;
-          });
-        } catch (error) {
-          console.warn("Background portal refresh failed:", error);
-        }
-      })();
     })();
-
     refreshTracker.current = { key: refreshKey, promise: refreshPromise };
-
     try {
       await refreshPromise;
     } finally {
@@ -2543,6 +2414,7 @@ export function AppProvider({ children }) {
 
     clearSupabaseModeLocalData();
     let mounted = true;
+    const bootGeneration = sessionGeneration.current;
 
     void (async () => {
       try {
@@ -2552,44 +2424,47 @@ export function AppProvider({ children }) {
           "Checking your saved session",
         );
         if (error) throw error;
-        if (!mounted) return;
+        if (!mounted || sessionGeneration.current !== bootGeneration) return;
         if (data.session?.user) {
           await refreshState(data.session.user);
         } else {
           setState((prev) => ({ ...prev, loading: false }));
         }
       } catch {
-        if (!mounted) return;
+        if (!mounted || sessionGeneration.current !== bootGeneration) return;
         setState((prev) => ({ ...prev, loading: false }));
       }
     })();
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION") {
-        return;
-      }
-
-      if (!mounted) {
-        return;
-      }
-
-      if (session?.user) {
-        await refreshState(session.user);
-      } else {
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mounted || event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION") return;
+      if (!session?.user) {
+        sessionGeneration.current += 1;
+        refreshTracker.current = { key: null, promise: null };
         setState((prev) => ({ ...defaultState, loading: false, notifications: prev.notifications }));
+        return;
       }
+      // Supabase auth callbacks run under its auth lock. Fetch after it releases.
+      const generation = sessionGeneration.current;
+      window.setTimeout(() => {
+        if (mounted && sessionGeneration.current === generation) {
+          void refreshState(session.user).catch((error) => console.warn("Session data load failed:", error));
+        }
+      }, 0);
     });
 
     return () => {
       mounted = false;
+      sessionGeneration.current += 1;
+      refreshTracker.current = { key: null, promise: null };
       subscription.unsubscribe();
     };
   }, []);
 
   useEffect(() => {
-    if (!hasSupabaseEnv || !supabase || !state.authUser) {
+    if (!hasSupabaseEnv || !supabase || !state.authUser || !state.currentUser) {
       return undefined;
     }
 
@@ -2682,7 +2557,7 @@ export function AppProvider({ children }) {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       supabase.removeChannel(portalRealtimeChannel);
     };
-  }, [state.authUser, state.courses.length, state.profiles.length]);
+  }, [state.authUser?.id, state.currentUser?.user_id]);
 
   const login = async ({ email, password }) => {
     if (!hasSupabaseEnv || !supabase) {
@@ -2711,19 +2586,22 @@ export function AppProvider({ children }) {
     }
   };
 
-  const logout = async () => {
+  const logout = async ({ silent = false } = {}) => {
     if (!hasSupabaseEnv || !supabase) {
       clearLocalSession();
       const db = ensureLocalDb();
       const nextState = buildLocalState(db);
       setState((prev) => ({ ...nextState, notifications: prev.notifications }));
-      pushNotification({ type: "success", title: "Signed out successfully" });
+      if (!silent) pushNotification({ type: "success", title: "Signed out successfully" });
       return;
     }
 
-    await supabase.auth.signOut();
+    sessionGeneration.current += 1;
+    refreshTracker.current = { key: null, promise: null };
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
     setState((prev) => ({ ...defaultState, loading: false, notifications: prev.notifications }));
-    pushNotification({ type: "success", title: "Signed out successfully" });
+    if (!silent) pushNotification({ type: "success", title: "Signed out successfully" });
   };
 
   const resetPassword = async ({ email, currentPassword, newPassword }) => {
@@ -2770,29 +2648,12 @@ export function AppProvider({ children }) {
     const discountAmount = paymentEligible ? resolveDiscountAmount(originalFee, discountType, discountValue) : 0;
     const totalFee = paymentEligible ? resolvePayableFee(originalFee || enrollment.total_fee, discountType, discountValue) : 0;
     const amountPaid = paymentEligible ? Number(enrollment.amount_paid || 0) : 0;
-    const paymentPlan = paymentEligible
-      ? inferPaymentPlan({
-        paymentPlan: enrollment.payment_plan || "",
-        installmentsPlanned: enrollment.installments_planned || 0,
-        amountPaid,
-      })
-      : "";
+    const progress = resolveInstallmentProgress({ ...enrollment, total_fee: totalFee, amount_paid: amountPaid });
+    const paymentPlan = paymentEligible ? progress.paymentPlan : "";
     const paymentMethod = paymentEligible ? (enrollment.payment_method || (amountPaid > 0 ? "UPI" : "")) : "";
-    const installmentsPlanned = paymentEligible ? (Number(enrollment.installments_planned) || (paymentPlan === "EMI" ? 3 : 1)) : 0;
-    const installmentAmount = paymentEligible
-      ? (
-        Number(enrollment.installment_amount || 0)
-        || (paymentPlan === "EMI" && installmentsPlanned ? Math.round(totalFee / installmentsPlanned) : totalFee)
-      )
-      : 0;
-    const installmentsPaid = paymentEligible
-      ? calculateInstallmentsPaid({
-        paymentPlan,
-        amountPaid,
-        installmentAmount,
-        installmentsPlanned,
-      })
-      : 0;
+    const installmentsPlanned = paymentEligible ? progress.installmentsPlanned : 0;
+    const installmentAmount = paymentEligible ? progress.installmentAmount : 0;
+    const installmentsPaid = paymentEligible ? progress.installmentsPaid : 0;
     const paymentStatus = paymentEligible ? normalizePaymentStatus(totalFee, amountPaid) : "Pending";
     const enrolledDate = paymentEligible ? toIsoDate(enrollment.enrolled_date || "") : "";
     const followUpDate = isEnquiryStage(pipelineStage)
@@ -2988,23 +2849,8 @@ export function AppProvider({ children }) {
         });
         return draft;
       }, successTitle);
-      if (
-        !serverSideAutomationsEnabled
-        && (
-        pipelineStage === "Enrolled"
-        && getSuccessfulEnrollmentEmailLogs(state.emailLogs, enrollmentId, isAdmissionConfirmationEmailLog).length === 0
-        )
-      ) {
-        void logEmail("Admission Confirmation", enrollmentRecord, {
-          logType: "Admission Confirmation",
-          student: studentRecord,
-          course: findCourseByReference(state.courses, [enrollmentRecord.course_id, enrollment.course_name]) || enrollment.course_name || "",
-          currentStage: pipelineStage,
-          silent: true,
-        }).catch(() => {});
 
-      }
-      if (pipelineStage === "Enrolled" && Number(amountPaid || 0) > 0) {
+      if (!serverSideAutomationsEnabled && pipelineStage === "Enrolled" && Number(amountPaid || 0) > 0) {
         void sendPaymentEmail(enrollmentId, {
           enrollment: enrollmentRecord,
           student: studentRecord,
@@ -3153,27 +2999,8 @@ export function AppProvider({ children }) {
       }
       await refreshState(state.authUser);
       pushNotification({ type: "success", title: successTitle });
-      if (
-        !serverSideAutomationsEnabled
-        && (
-        pipelineStage === "Enrolled"
-        && getSuccessfulEnrollmentEmailLogs(state.emailLogs, enrollmentRecord.id, isAdmissionConfirmationEmailLog).length === 0
-        )
-      ) {
-        void logEmail("Admission Confirmation", {
-          ...enrollmentRecord,
-          course_name: selectedCourse.course_name || enrollment.course_name || "",
-          pipeline_stage: pipelineStage,
-        }, {
-          logType: "Admission Confirmation",
-          student: studentRecord,
-          course: selectedCourse,
-          currentStage: pipelineStage,
-          silent: true,
-        }).catch(() => {});
 
-      }
-      if (pipelineStage === "Enrolled" && Number(amountPaid || 0) > 0) {
+      if (!serverSideAutomationsEnabled && pipelineStage === "Enrolled" && Number(amountPaid || 0) > 0) {
         void sendPaymentEmail(enrollmentRecord.id, {
           enrollment: {
             ...enrollmentRecord,
@@ -3318,19 +3145,8 @@ export function AppProvider({ children }) {
           ...draft.documents.filter((item) => !nextDocuments.some((doc) => doc.id === item.id)),
         ],
       }), "Enquiry converted to enrolled");
-      if (
-        !serverSideAutomationsEnabled
-        && getSuccessfulEnrollmentEmailLogs(state.emailLogs, enrollmentId, isAdmissionConfirmationEmailLog).length === 0
-      ) {
-        void logEmail("Admission Confirmation", updatedEnrollmentRecord, {
-          logType: "Admission Confirmation",
-          student: updatedStudentRecord,
-          course: findCourseByReference(state.courses, [updatedEnrollmentRecord.course_id, updatedEnrollmentRecord.course_name]) || updatedEnrollmentRecord.course_name || "",
-          currentStage: pipelineStage,
-          silent: true,
-        }).catch(() => {});
-      }
-      if (Number(amountPaid || 0) > 0) {
+
+      if (!serverSideAutomationsEnabled && Number(amountPaid || 0) > 0) {
         void sendPaymentEmail(enrollmentId, {
           enrollment: updatedEnrollmentRecord,
           student: updatedStudentRecord,
@@ -3445,24 +3261,8 @@ export function AppProvider({ children }) {
 
     await refreshState(state.authUser);
     pushNotification({ type: "success", title: "Enquiry converted to enrolled" });
-    if (
-      !serverSideAutomationsEnabled
-      && getSuccessfulEnrollmentEmailLogs(state.emailLogs, enrollmentId, isAdmissionConfirmationEmailLog).length === 0
-    ) {
-      void logEmail("Admission Confirmation", {
-        ...currentEnrollment,
-        ...updatedEnrollment,
-        course_name: selectedCourse.course_name || enrollment.course_name || currentEnrollment.course_name || "",
-        pipeline_stage: pipelineStage,
-      }, {
-        logType: "Admission Confirmation",
-        student: updatedStudent || currentStudent,
-        course: selectedCourse,
-        currentStage: pipelineStage,
-        silent: true,
-      }).catch(() => {});
-    }
-    if (Number(amountPaid || 0) > 0) {
+
+    if (!serverSideAutomationsEnabled && Number(amountPaid || 0) > 0) {
       void sendPaymentEmail(enrollmentId, {
         enrollment: {
           ...currentEnrollment,
@@ -3537,28 +3337,7 @@ export function AppProvider({ children }) {
     });
     await refreshState(state.authUser);
     pushNotification({ type: "success", title: "Enrollment updated" });
-    if (
-      !serverSideAutomationsEnabled
-      && (
-      normalizeStageValue(normalizedPatch.pipeline_stage || "") === "Enrolled"
-      && getSuccessfulEnrollmentEmailLogs(state.emailLogs, enrollmentId, isAdmissionConfirmationEmailLog).length === 0
-      )
-    ) {
-      const studentRecord = state.students.find((item) => item.id === currentEnrollment?.student_id);
-      const courseRecord = state.courses.find((item) => item.id === (updatedEnrollment?.course_id || currentEnrollment?.course_id))
-        || state.courses.find((item) => item.course_name === (updatedEnrollment?.course_name || currentEnrollment?.course_name))
-        || null;
-      void logEmail("Admission Confirmation", {
-        ...currentEnrollment,
-        ...updatedEnrollment,
-      }, {
-        logType: "Admission Confirmation",
-        student: studentRecord,
-        course: courseRecord,
-        currentStage: "Enrolled",
-        silent: true,
-      }).catch(() => {});
-    }
+
   };
 
   const saveEnrollmentPaymentDetails = async (enrollmentId, patch) => {
@@ -3879,13 +3658,22 @@ export function AppProvider({ children }) {
     }
   };
 
-  const markInstallmentPaid = async (enrollmentId, paymentMode = "UPI") => {
-    const currentEnrollment = state.enrollments.find((item) => item.id === enrollmentId);
+  const markInstallmentPaid = async (enrollmentId, paymentMode = "UPI", details = {}) => {
+    let currentEnrollment = state.enrollments.find((item) => item.id === enrollmentId);
     if (!currentEnrollment) {
       throw new Error("Enrollment not found for payment update.");
     }
 
-    const paymentPatch = buildRecordedPaymentState(currentEnrollment, paymentMode);
+    if (hasSupabaseEnv && supabase) {
+      const { data: latest, error } = await supabase.from("enrollments").select("*").eq("id", enrollmentId).single();
+      if (error) throw formatEnrollmentAccessError(error, "read", "enrollments");
+      if (!latest || Number(latest.amount_paid) !== Number(currentEnrollment.amount_paid)) {
+        await refreshState(state.authUser, { forceRemote: true });
+        throw new Error("This payment record changed. Check the refreshed balance before recording another payment.");
+      }
+      currentEnrollment = latest;
+    }
+    const paymentPatch = buildRecordedPaymentState(currentEnrollment, paymentMode, details);
     const latestPaymentEntry = paymentPatch.payment_history?.[0] || null;
 
     if (!hasSupabaseEnv || !supabase) {
@@ -3899,7 +3687,7 @@ export function AppProvider({ children }) {
         });
         return draft;
       }, "Payment recorded");
-      try {
+      if (details.sendReceipt) try {
         await sendPaymentEmail(enrollmentId, {
           enrollment: { ...currentEnrollment, ...paymentPatch },
           paidAmount: latestPaymentEntry?.paid_amount ?? latestPaymentEntry?.amount ?? 0,
@@ -3908,17 +3696,23 @@ export function AppProvider({ children }) {
       } catch {}
       return;
     }
-    const { error, removedColumns = [] } = await runMutationWithSchemaRetry({
-      tableName: "enrollments",
-      payload: paymentPatch,
-      execute: (nextPayload) => supabase.from("enrollments").update(nextPayload).eq("id", enrollmentId).select().single(),
-    });
+    // Save history and totals together. A stale balance must not overwrite a newer payment.
+    let paymentQuery = supabase.from("enrollments").update({
+      ...paymentPatch,
+      next_due_date: paymentPatch.next_due_date || null,
+    }).eq("id", enrollmentId);
+    paymentQuery = currentEnrollment.amount_paid == null
+      ? paymentQuery.is("amount_paid", null)
+      : paymentQuery.eq("amount_paid", currentEnrollment.amount_paid);
+    const { data: savedPayment, error } = await paymentQuery.select().maybeSingle();
     if (error) throw formatEnrollmentAccessError(error, "update", "enrollments");
-    if (removedColumns.length) {
-      storeShadowEnrollmentPayload(currentEnrollment, paymentPatch, removedColumns);
+    if (!savedPayment) {
+      await refreshState(state.authUser, { forceRemote: true });
+      throw new Error("This payment record changed or is no longer editable. Refresh and check the balance before trying again.");
     }
 
-    await refreshState(state.authUser);
+    setState((prev) => ({ ...prev, enrollments: prev.enrollments.map((item) => item.id === enrollmentId ? { ...item, ...savedPayment } : item) }));
+    await refreshState(state.authUser, { forceRemote: true }).catch(() => {});
     pushNotification({ type: "success", title: "Payment recorded" });
     try {
       await sendPaymentEmail(enrollmentId, {
@@ -3926,7 +3720,9 @@ export function AppProvider({ children }) {
         paidAmount: latestPaymentEntry?.paid_amount ?? latestPaymentEntry?.amount ?? 0,
         paymentDate: paymentPatch.last_payment_date,
       });
-    } catch {}
+    } catch {
+      pushNotification({ type: "warning", title: "Payment saved. Receipt could not be confirmed; the server will check delivery. Do not record the payment again." });
+    }
   };
 
   const importStudentsFromCsv = async (rows) => {
@@ -4913,7 +4709,7 @@ export function AppProvider({ children }) {
   }, [portalRecords]);
 
   useEffect(() => {
-    if (state.loading) {
+    if (state.loading || state.dataError) {
       return;
     }
 
@@ -4974,6 +4770,9 @@ export function AppProvider({ children }) {
     });
 
     const duePaymentReminders = portalRecords.filter((record) => {
+      if (SERVER_SIDE_PAYMENT_REMINDERS_ENABLED) {
+        return false;
+      }
       if (record.currentStage !== "Enrolled") {
         return false;
       }
@@ -5076,7 +4875,7 @@ export function AppProvider({ children }) {
         }
       }
     })();
-  }, [automationTick, portalRecords, serverSideAutomationsEnabled, state.emailLogs, state.loading]);
+  }, [automationTick, portalRecords, serverSideAutomationsEnabled, state.emailLogs, state.loading, state.dataError]);
 
   const value = useMemo(
     () => ({
