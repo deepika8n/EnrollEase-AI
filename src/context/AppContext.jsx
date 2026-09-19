@@ -85,8 +85,8 @@ const deferredPortalTables = [
   {
     key: "students",
     table: "students",
-    queryBuilder: (query) => query.select("*").order("created_at", { ascending: false }),
-    fallbackQueryBuilder: (query) => query.select("*"),
+    queryBuilder: (query) => query.select("id,student_code,full_name,email,phone,current_activity,place,lead_source,notes,created_at").order("created_at", { ascending: false }),
+    fallbackQueryBuilder: (query) => query.select("id,student_code,full_name,email,phone,current_activity,place,lead_source,notes,created_at"),
   },
   {
     key: "enrollments",
@@ -97,8 +97,8 @@ const deferredPortalTables = [
   {
     key: "documents",
     table: "documents",
-    queryBuilder: (query) => query.select("*").order("uploaded_at", { ascending: false }),
-    fallbackQueryBuilder: (query) => query.select("*"),
+    queryBuilder: (query) => query.select("id,enrollment_id,document_type,verification_status,remarks,uploaded_at").order("uploaded_at", { ascending: false }),
+    fallbackQueryBuilder: (query) => query.select("id,enrollment_id,document_type,verification_status,remarks,uploaded_at"),
   },
 ];
 const optionalPortalTables = [

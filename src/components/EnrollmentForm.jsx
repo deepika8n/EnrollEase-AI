@@ -1,3 +1,4 @@
+import useStudentMedia from "./useStudentMedia";
 import { useEffect, useId, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DocumentPreview from "./DocumentPreview";
@@ -258,6 +259,7 @@ export default function EnrollmentForm({
     [convertEnrollmentId, portalRecords],
   );
   const isConvertMode = Boolean(convertRecord?.isEnquiryRecord);
+  const media = useStudentMedia(convertRecord?.student?.id, convertRecord?.enrollment?.id);
   const [form, setForm] = useState(createBlankForm);
   const [photoPreview, setPhotoPreview] = useState("");
   const [aadhaarPreview, setAadhaarPreview] = useState("");
@@ -327,6 +329,12 @@ export default function EnrollmentForm({
 
     return lookups;
   }, [students]);
+
+  useEffect(() => {
+    if (!isConvertMode) return;
+    if (media.urls["Student Photo"]) setPhotoPreview(prev => prev || media.urls["Student Photo"]);
+    if (media.urls["Aadhaar ID Photo"]) setAadhaarPreview(prev => prev || media.urls["Aadhaar ID Photo"]);
+  }, [media.urls, isConvertMode]);
 
   useEffect(() => {
     if (!isConvertMode) return;
@@ -1098,6 +1106,8 @@ export default function EnrollmentForm({
             </button>
           ) : null}
         </div>
+        {media.loading ? <p role="status" className="text-sm text-slate-600">Loading existing photos and documents?</p> : null}
+        {media.error ? <p role="alert" className="text-sm text-rose-700">{media.error} <button type="button" className="underline" onClick={media.retry}>Retry files</button></p> : null}
         {submitError ? <p className="text-sm font-semibold text-brand-500">{submitError}</p> : null}
 
         <datalist id={nameSuggestionId}>

@@ -1,3 +1,4 @@
+import useStudentMedia from "../components/useStudentMedia";
 import SendEnrollmentFormButton from "../components/SendEnrollmentFormButton";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -257,9 +258,12 @@ export default function StudentProfilePageFixed() {
   const student = record?.student;
   const enrollment = record?.enrollment;
   const course = record?.course;
-  const docs = record?.documents || [];
-  const studentPhotoUrl = student?.photo_url || docs.find((doc) => doc.document_type === "Student Photo")?.file_url || "";
-  const aadhaarDocumentUrl = student?.aadhaar_document_url || docs.find((doc) => doc.document_type === "Aadhaar ID Photo")?.file_url || "";
+  const media = useStudentMedia(student?.id, enrollment?.id);
+  const docs = useMemo(() => (record?.documents || []).map(doc => ({
+    ...doc, file_url: media.urls[doc.document_type] || doc.file_url || "",
+  })), [record?.documents, media.urls]);
+  const studentPhotoUrl = media.urls["Student Photo"] || student?.photo_url || docs.find((doc) => doc.document_type === "Student Photo")?.file_url || "";
+  const aadhaarDocumentUrl = media.urls["Aadhaar ID Photo"] || student?.aadhaar_document_url || docs.find((doc) => doc.document_type === "Aadhaar ID Photo")?.file_url || "";
   const emails = emailLogs.filter((item) => item.enrollment_id === enrollment?.id);
   const isPreEnrollment = Boolean(record?.isEnquiryRecord);
   const todayIsoDate = getTodayIsoDate();
@@ -476,6 +480,7 @@ export default function StudentProfilePageFixed() {
           </button>,
           <button
             key="pdf"
+            disabled={media.loading || Boolean(media.error)}
             type="button"
             className="button-primary"
             onClick={() =>
@@ -495,6 +500,9 @@ export default function StudentProfilePageFixed() {
           </Link>,
         ]}
       />
+
+      {media.loading ? <p role="status" className="text-sm text-slate-600">Loading photos and documents? Your student details are ready.</p> : null}
+      {media.error ? <p role="alert" className="text-sm text-rose-700">{media.error} <button type="button" className="underline" onClick={media.retry}>Retry files</button></p> : null}
 
       {(() => {
         const handleProfileFieldChange = (key, value) => {
