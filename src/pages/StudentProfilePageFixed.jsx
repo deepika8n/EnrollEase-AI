@@ -747,6 +747,7 @@ export default function StudentProfilePageFixed() {
                   >
                     <DocumentPreview
                       src={studentPhotoUrl}
+                      portrait
                       alt={`${student.full_name} photo`}
                       title={`${student.full_name} photo`}
                       fileName={`${student.full_name}-photo`}

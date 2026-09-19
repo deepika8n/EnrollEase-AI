@@ -708,6 +708,7 @@ export default function StudentIntakePage() {
                 <DocumentPreview
                   src={photoPreview}
                   alt="Student preview"
+                  portrait
                   title="Student photo"
                   className="mt-4 min-h-[180px] w-full flex-1 rounded-[24px] border border-slate-200 bg-white object-cover sm:min-h-[220px]"
                 />

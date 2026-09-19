@@ -1053,7 +1053,8 @@ export default function EnrollmentForm({
                   <DocumentPreview
                     src={photoPreview}
                     alt="Student preview"
-                    title="Student photo"
+                    portrait
+                  title="Student photo"
                     className="mt-4 min-h-[180px] w-full flex-1 rounded-[24px] border border-slate-200 bg-white object-cover sm:min-h-[220px]"
                   />
                 </div>

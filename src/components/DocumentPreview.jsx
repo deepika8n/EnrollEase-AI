@@ -1,3 +1,4 @@
+import { createAvatarCrop } from "../utils/avatarCrop";
 import { useEffect, useMemo, useState } from "react";
 import { GlobalWorkerOptions, getDocument } from "pdfjs-dist";
 import pdfWorkerSrc from "pdfjs-dist/build/pdf.worker.min.mjs?url";
@@ -73,25 +74,11 @@ function FallbackCard({ kind, fileName, className = "" }) {
   );
 }
 
-function NativePdfPreview({ src, title, className = "", interactive = false }) {
-  return (
-    <div className={`min-w-0 overflow-hidden rounded-[24px] border border-slate-200 bg-white ${className}`.trim()}>
-      <object
-        data={src}
-        type="application/pdf"
-        aria-label={title || "PDF preview"}
-        className={`h-full min-h-[220px] w-full bg-white ${interactive ? "" : "pointer-events-none"}`.trim()}
-      >
-        <FallbackCard kind="pdf" fileName={title || "PDF document"} className="h-full min-h-[220px] border-0 shadow-none" />
-      </object>
-    </div>
-  );
-}
-
-export default function DocumentPreview({ src, alt, title, fileName, className = "", enablePdfZoom = false, loading = false, error = "" }) {
+export default function DocumentPreview({ src, alt, title, fileName, className = "", enablePdfZoom = false, loading = false, error = "", portrait = false }) {
   const [hasImageError, setHasImageError] = useState(false);
   const [pdfThumbnail, setPdfThumbnail] = useState("");
   const [pdfStatus, setPdfStatus] = useState("idle");
+  const [portraitPreview, setPortraitPreview] = useState({ source: "", url: "" });
   const [pdfZoom, setPdfZoom] = useState(pdfZoomLevels[0]);
   const sourceKind = getDocumentSourceKind(src);
   const displayName = useMemo(
@@ -198,10 +185,21 @@ export default function DocumentPreview({ src, alt, title, fileName, className =
     };
   }, [enablePdfZoom, sourceKind, src]);
 
+  const portraitSource = sourceKind === "pdf" ? pdfThumbnail : src;
+  useEffect(() => {
+    if (!portrait || !portraitSource) return;
+    const image = new Image();
+    image.onload = () => setPortraitPreview({ source: portraitSource, url: createAvatarCrop(image) });
+    image.src = portraitSource;
+    return () => { image.onload = null; };
+  }, [portrait, portraitSource]);
+  const fittedSource = portrait && portraitPreview.source === portraitSource ? portraitPreview.url : portraitSource;
+  const fitStyle = { objectFit: portrait ? "cover" : "contain", objectPosition: portrait ? "center 25%" : "center" };
+
   if (!String(src || "").trim() || String(src || "").trim() === "#") {
     return (
       <PreviewShell className={className}>
-        <p className="text-base font-semibold text-slate-900">{loading ? "Loading document?" : error ? "Document could not be loaded. Please retry." : "No document uploaded"}</p>
+        <p className="text-base font-semibold text-slate-900">{loading ? "Loading document..." : error ? "Document could not be loaded. Please retry." : "No document uploaded"}</p>
       </PreviewShell>
     );
   }
@@ -209,8 +207,9 @@ export default function DocumentPreview({ src, alt, title, fileName, className =
   if (sourceKind === "image" && !hasImageError) {
     return (
       <img
-        src={src}
+        src={portrait ? fittedSource : src}
         alt={alt}
+        style={fitStyle}
         onError={() => setHasImageError(true)}
         className={className || "h-full min-h-[220px] w-full rounded-[24px] border border-slate-200 bg-white object-cover"}
       />
@@ -218,43 +217,14 @@ export default function DocumentPreview({ src, alt, title, fileName, className =
   }
 
   if (sourceKind === "pdf") {
-    if (enablePdfZoom) {
-      return (
-        <div className={`flex h-full min-h-[260px] w-full min-w-0 flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white ${className}`.trim()}>
-          <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm font-medium text-slate-500">PDF preview</p>
-            <button
-              type="button"
-              className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-600"
-              onClick={() => openDocumentFile(src)}
-            >
-              Open PDF
-            </button>
-          </div>
-          <iframe
-            src={src}
-            title={title || alt || displayName}
-            className="min-h-0 w-full flex-1 bg-white"
-          />
-        </div>
-      );
-    }
-
-    return (
-      <NativePdfPreview
-        src={src}
-        title={title || alt || displayName}
-        className={className}
-      />
-    );
-
     if (pdfStatus === "ready" && pdfThumbnail) {
       if (enablePdfZoom) {
         return (
           <div className={`flex h-full min-h-[260px] w-full min-w-0 flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white ${className}`.trim()}>
             <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm font-medium text-slate-500">Zoom and scroll to inspect the Aadhaar PDF.</p>
-              <div className="grid grid-cols-3 gap-2 sm:flex sm:items-center">
+              <p className="text-sm font-medium text-slate-500">Full page preview. Zoom for details.</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <button type="button" className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-600" onClick={() => openDocumentFile(src)}>Open PDF</button>
                 <button
                   type="button"
                   className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
@@ -280,12 +250,12 @@ export default function DocumentPreview({ src, alt, title, fileName, className =
                 </button>
               </div>
             </div>
-            <div className="min-h-0 flex-1 overflow-auto bg-slate-50 p-4">
-              <div className="flex min-h-full min-w-full items-start justify-center">
+            <div className="h-[320px] max-h-[55vh] min-h-0 w-full overflow-auto bg-slate-50 p-3">
+              <div className={pdfZoom === 100 ? "flex h-full w-full items-center justify-center" : "flex min-h-full min-w-full items-start justify-center"}>
                 <img
                   src={pdfThumbnail}
                   alt={alt}
-                  style={{ width: `${pdfZoom}%`, maxWidth: "none" }}
+                  style={pdfZoom === 100 ? { width: "100%", height: "100%", objectFit: "contain" } : { width: `${pdfZoom}%`, maxWidth: "none" }}
                   className="h-auto rounded-[20px] border border-slate-200 bg-white shadow-sm"
                 />
               </div>
@@ -296,8 +266,9 @@ export default function DocumentPreview({ src, alt, title, fileName, className =
 
       return (
         <img
-          src={pdfThumbnail}
+          src={portrait ? fittedSource : pdfThumbnail}
           alt={alt}
+          style={fitStyle}
           className={className || "h-full min-h-[220px] w-full rounded-[24px] border border-slate-200 bg-white object-contain"}
         />
       );
