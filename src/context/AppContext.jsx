@@ -1,3 +1,4 @@
+import { createImagePreview } from "../utils/imagePreview";
 import { canSendStudentEnrollmentForm } from "../utils/studentFormEligibility";
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { createDemoPortalState } from "../data/demoPortal";
@@ -435,6 +436,8 @@ function pickStudentDbColumns(student = {}) {
     phone: student.phone || "",
     current_activity: student.current_activity || "",
     place: student.place || "",
+    ...(student.photo_preview_url !== undefined ? { photo_preview_url: student.photo_preview_url } : {}),
+    ...(student.aadhaar_preview_url !== undefined ? { aadhaar_preview_url: student.aadhaar_preview_url } : {}),
     photo_url: student.photo_url || "",
     aadhaar_document_url: student.aadhaar_document_url || "",
     lead_source: student.lead_source || "",
@@ -2907,6 +2910,8 @@ export function AppProvider({ children }) {
         phone: student.phone,
         current_activity: student.current_activity || "",
         place: student.place || "",
+        photo_preview_url: isEnquiryCreation ? "" : await createImagePreview(student.photo_url),
+        aadhaar_preview_url: isEnquiryCreation ? "" : await createImagePreview(student.aadhaar_document_url, 1400),
         photo_url: isEnquiryCreation ? "" : (student.photo_url || ""),
         aadhaar_document_url: isEnquiryCreation ? "" : (student.aadhaar_document_url || ""),
         lead_source: student.lead_source || "Manual Form",
@@ -3201,6 +3206,8 @@ export function AppProvider({ children }) {
         phone: student.phone,
         current_activity: student.current_activity || "",
         place: student.place || "",
+        photo_preview_url: await createImagePreview(student.photo_url),
+        aadhaar_preview_url: await createImagePreview(student.aadhaar_document_url, 1400),
         photo_url: student.photo_url || "",
         aadhaar_document_url: student.aadhaar_document_url || "",
         lead_source: student.lead_source || currentStudent.lead_source || "Manual Form",

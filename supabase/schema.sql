@@ -31,6 +31,8 @@ create table if not exists students (
 );
 
 alter table public.students add column if not exists student_code text;
+alter table public.students add column if not exists photo_preview_url text;
+alter table public.students add column if not exists aadhaar_preview_url text;
 create table if not exists courses (
   id uuid primary key default gen_random_uuid(),
   course_name text not null,

@@ -259,7 +259,7 @@ export default function EnrollmentForm({
     [convertEnrollmentId, portalRecords],
   );
   const isConvertMode = Boolean(convertRecord?.isEnquiryRecord);
-  const media = useStudentMedia(convertRecord?.student?.id, convertRecord?.enrollment?.id);
+  const media = useStudentMedia(convertRecord?.student?.id, convertRecord?.enrollment?.id, true);
   const [form, setForm] = useState(createBlankForm);
   const [photoPreview, setPhotoPreview] = useState("");
   const [aadhaarPreview, setAadhaarPreview] = useState("");

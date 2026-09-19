@@ -1,3 +1,4 @@
+import { createImagePreview } from "../utils/imagePreview";
 import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import DocumentPreview from "../components/DocumentPreview";
@@ -369,6 +370,8 @@ export default function StudentIntakePage() {
         token,
         submission: {
           student: {
+            photo_preview_url: await createImagePreview(studentPhotoDataUrl),
+            aadhaar_preview_url: await createImagePreview(aadhaarDataUrl, 1400),
             full_name: form.full_name.trim(),
             email: form.email.trim().toLowerCase(),
             phone: form.phone.trim(),

@@ -1,3 +1,5 @@
+import { supabase } from "../lib/supabase";
+import { fetchStudentMedia } from "../services/studentMediaService";
 import useStudentMedia from "../components/useStudentMedia";
 import SendEnrollmentFormButton from "../components/SendEnrollmentFormButton";
 import { useEffect, useMemo, useState } from "react";
@@ -243,6 +245,8 @@ export default function StudentProfilePageFixed() {
   const { id } = useParams();
   const { portalRecords, emailLogs, logEmail, updateStudentProfile } = useApp();
   const [preview, setPreview] = useState(null);
+  const [originalLoading, setOriginalLoading] = useState(false);
+  const [originalError, setOriginalError] = useState("");
   const [recordingPayment, setRecordingPayment] = useState(false);
   const [editingProfile, setEditingProfile] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
@@ -264,6 +268,15 @@ export default function StudentProfilePageFixed() {
   })), [record?.documents, media.urls]);
   const studentPhotoUrl = media.urls["Student Photo"] || student?.photo_url || docs.find((doc) => doc.document_type === "Student Photo")?.file_url || "";
   const aadhaarDocumentUrl = media.urls["Aadhaar ID Photo"] || student?.aadhaar_document_url || docs.find((doc) => doc.document_type === "Aadhaar ID Photo")?.file_url || "";
+  const openOriginalPhoto = async () => {
+    setOriginalLoading(true);
+    setOriginalError("");
+    try {
+      const urls = await fetchStudentMedia(supabase, { studentId: student.id, enrollmentId: enrollment.id, originals: true, signal: AbortSignal.timeout(60000) });
+      setPreview({ src: urls["Student Photo"], title: `${student.full_name} original photo`, fileName: `${student.full_name}-photo` });
+    } catch { setOriginalError("The original file could not be loaded. Please try again."); }
+    finally { setOriginalLoading(false); }
+  };
   const emails = emailLogs.filter((item) => item.enrollment_id === enrollment?.id);
   const isPreEnrollment = Boolean(record?.isEnquiryRecord);
   const todayIsoDate = getTodayIsoDate();
@@ -724,6 +737,8 @@ export default function StudentProfilePageFixed() {
             <div className="mt-6 grid grid-cols-2 gap-5">
               <div className="flex h-full flex-col">
                 <p className="mb-3 text-sm font-semibold uppercase tracking-[0.14em] text-slate-500 sm:min-h-[3.75rem] sm:tracking-[0.18em]">Student photo</p>
+                {studentPhotoUrl ? <button type="button" className="mb-2 text-sm text-brand-500 underline" disabled={originalLoading} onClick={openOriginalPhoto}>{originalLoading ? "Loading original?" : "Open original photo"}</button> : null}
+                {originalError ? <p role="alert" className="text-sm text-rose-700">{originalError}</p> : null}
                 {studentPhotoUrl ? (
                   <button
                     type="button"
@@ -741,6 +756,8 @@ export default function StudentProfilePageFixed() {
                 ) : (
                   <DocumentPreview
                     src=""
+                    loading={media.loading}
+                    error={media.error}
                     alt="Student photo"
                     title="Student photo"
                     className="h-48 w-full flex-1 rounded-[24px] border border-slate-200 bg-slate-50 sm:h-56 sm:rounded-[28px]"
@@ -766,6 +783,8 @@ export default function StudentProfilePageFixed() {
                 ) : (
                   <DocumentPreview
                     src=""
+                    loading={media.loading}
+                    error={media.error}
                     alt="Aadhaar"
                     title="Aadhaar document"
                     className="h-48 w-full flex-1 rounded-[24px] border border-slate-200 bg-slate-50 sm:h-56 sm:rounded-[28px]"

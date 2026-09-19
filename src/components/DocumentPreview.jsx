@@ -88,7 +88,7 @@ function NativePdfPreview({ src, title, className = "", interactive = false }) {
   );
 }
 
-export default function DocumentPreview({ src, alt, title, fileName, className = "", enablePdfZoom = false }) {
+export default function DocumentPreview({ src, alt, title, fileName, className = "", enablePdfZoom = false, loading = false, error = "" }) {
   const [hasImageError, setHasImageError] = useState(false);
   const [pdfThumbnail, setPdfThumbnail] = useState("");
   const [pdfStatus, setPdfStatus] = useState("idle");
@@ -201,7 +201,7 @@ export default function DocumentPreview({ src, alt, title, fileName, className =
   if (!String(src || "").trim() || String(src || "").trim() === "#") {
     return (
       <PreviewShell className={className}>
-        <p className="text-base font-semibold text-slate-900">No document uploaded</p>
+        <p className="text-base font-semibold text-slate-900">{loading ? "Loading document?" : error ? "Document could not be loaded. Please retry." : "No document uploaded"}</p>
       </PreviewShell>
     );
   }

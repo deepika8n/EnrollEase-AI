@@ -1,12 +1,25 @@
-// File contents are deliberately excluded from the portal's login queries.
-export async function fetchStudentMedia(client, { studentId, enrollmentId, signal }) {
+// Keep previews separate from originals so displaying a profile stays lightweight.
+export async function fetchStudentMedia(client, { studentId, enrollmentId, signal, originals = false, onProgress }) {
+  const fields = originals ? "photo_url,aadhaar_document_url" : "photo_preview_url,aadhaar_preview_url";
   const { data: student, error } = await client.from("students")
-    .select("photo_url,aadhaar_document_url").eq("id", studentId).abortSignal(signal).single();
+    .select(fields).eq("id", studentId).abortSignal(signal).single();
   if (error) throw error;
   const urls = {
-    "Student Photo": student?.photo_url || "",
-    "Aadhaar ID Photo": student?.aadhaar_document_url || "",
+    "Student Photo": student?.photo_preview_url || student?.photo_url || "",
+    "Aadhaar ID Photo": student?.aadhaar_preview_url || student?.aadhaar_document_url || "",
   };
+  onProgress?.({ ...urls });
+  const fieldByType = { "Student Photo": "photo_url", "Aadhaar ID Photo": "aadhaar_document_url" };
+  if (!originals) {
+    const missing = Object.keys(urls).filter(type => !urls[type]);
+    if (missing.length) {
+      const { data, error: originalError } = await client.from("students")
+        .select(missing.map(type => fieldByType[type]).join(",")).eq("id", studentId).abortSignal(signal).single();
+      if (originalError) throw originalError;
+      for (const type of missing) urls[type] = data?.[fieldByType[type]] || "";
+      onProgress?.({ ...urls });
+    }
+  }
   const missing = Object.keys(urls).filter(type => !urls[type]);
   if (missing.length) {
     const { data: documents, error: documentError } = await client.from("documents")
