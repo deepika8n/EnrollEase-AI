@@ -12,6 +12,7 @@ import {
 } from "../utils/enrollmentDateValidation";
 import { parseCsv } from "../utils/fileHelpers";
 import { formatDate, formatShortDate } from "../utils/formatters";
+import { getEnquirySourceMeta as getEnquirySourceMetaForRecord } from "../utils/enquirySource";
 
 const GIRL_NAME_PREFIXES = [
   "priya",
@@ -251,22 +252,7 @@ export default function EnquiriesPage() {
   const getEnquirySourceMeta = (record) => {
     const leadSource = String(record?.student?.lead_source || "").trim().toLowerCase();
     const hasReachableEmail = isValidStudentEmail(record?.student?.email || "");
-
-    if (leadSource === "public enquiry form") {
-      return { key: "app", label: "Enquired Through App" };
-    }
-    if (leadSource === "csv upload") {
-      return { key: "csv", label: "Imported From Excel" };
-    }
-    if (leadSource === "manual form") {
-      return hasReachableEmail
-        ? { key: "manual_email", label: "Admin Sent Form By Mail" }
-        : { key: "admin_only", label: "Admin Only Uploads" };
-    }
-
-    return hasReachableEmail
-      ? { key: "manual_email", label: "Admin Sent Form By Mail" }
-      : { key: "admin_only", label: "Admin Only Uploads" };
+    return getEnquirySourceMetaForRecord({ leadSource, hasReachableEmail });
   };
 
   useEffect(() => {
