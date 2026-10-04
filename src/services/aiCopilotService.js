@@ -104,6 +104,30 @@ function getPaymentSummary(record) {
   return { totalFee, amountPaid, dueAmount };
 }
 
+function getPaymentDueTiming(record) {
+  const dueAmount = getPaymentSummary(record).dueAmount;
+  const paymentStatus = normalizeKey(record?.enrollment?.payment_status);
+  const nextDueDate = normalizeText(record?.enrollment?.next_due_date);
+  if (!nextDueDate || dueAmount <= 0 || paymentStatus === "paid") {
+    return { daysUntilDue: null, isOverdue: false, isDueSoon: false };
+  }
+
+  const dueDate = new Date(`${nextDueDate}T00:00:00`);
+  if (Number.isNaN(dueDate.getTime())) {
+    return { daysUntilDue: null, isOverdue: false, isDueSoon: false };
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const daysUntilDue = Math.round((dueDate.getTime() - today.getTime()) / 86400000);
+
+  return {
+    daysUntilDue,
+    isOverdue: daysUntilDue < 0,
+    isDueSoon: daysUntilDue >= 0 && daysUntilDue <= 7,
+  };
+}
+
 function getMissingItems(record) {
   const items = [];
   const missingInformation = Array.isArray(record?.missingInformation) ? record.missingInformation : [];
@@ -123,11 +147,15 @@ function getTimelineFlags(record) {
   const paymentStatus = normalizeText(record?.enrollment?.payment_status) || "Pending";
   const followUpDate = normalizeText(record?.enrollment?.follow_up_date);
   const nextDueDate = normalizeText(record?.enrollment?.next_due_date);
+  const paymentTiming = getPaymentDueTiming(record);
 
   if (stage === "Dropout") flags.push("Dropped out");
   if (stage === "Enquiry") flags.push("Still in enquiry stage");
   if (payment.dueAmount > 0) flags.push(`Outstanding balance ${formatCurrency(payment.dueAmount)}`);
-  if (paymentStatus === "Overdue") flags.push("Payment is overdue");
+  if (paymentStatus === "Overdue" || paymentTiming.isOverdue) {
+    flags.push(paymentTiming.daysUntilDue === null ? "Payment is overdue" : `Payment overdue by ${Math.abs(paymentTiming.daysUntilDue)} day${Math.abs(paymentTiming.daysUntilDue) === 1 ? "" : "s"}`);
+  }
+  if (paymentTiming.isDueSoon) flags.push(`Payment due in ${paymentTiming.daysUntilDue} day${paymentTiming.daysUntilDue === 1 ? "" : "s"}`);
   if (followUpDate) flags.push(`Follow-up date ${formatDate(followUpDate)}`);
   if (nextDueDate) flags.push(`Next due date ${formatDate(nextDueDate)}`);
 
@@ -136,13 +164,16 @@ function getTimelineFlags(record) {
 
 function getPriorityScore(record) {
   const payment = getPaymentSummary(record);
+  const paymentTiming = getPaymentDueTiming(record);
+  const isOverdue = normalizeText(record?.enrollment?.payment_status) === "Overdue" || paymentTiming.isOverdue;
   const missingItems = getMissingItems(record);
   let score = 0;
 
   if (record?.isEnquiryRecord) score += 18;
   if (record?.isEnrolledRecord) score += 10;
   if (record?.isDropoutRecord) score += 30;
-  if (normalizeText(record?.enrollment?.payment_status) === "Overdue") score += 35;
+  if (isOverdue) score += paymentTiming.daysUntilDue <= -7 ? 45 : 35;
+  if (paymentTiming.isDueSoon) score += 35;
   if (payment.dueAmount > 0) score += Math.min(30, Math.round(payment.dueAmount / 5000) * 4);
   if (missingItems.length) score += Math.min(24, missingItems.length * 8);
 
@@ -825,8 +856,14 @@ function createAgentAction(record, actionType, index) {
     dropout_reactivation: "Send reactivation email",
   };
 
+  const paymentTiming = getPaymentDueTiming(record);
+  const paymentTimingMessage = paymentTiming.isOverdue
+    ? ` The payment is overdue by ${Math.abs(paymentTiming.daysUntilDue)} day${Math.abs(paymentTiming.daysUntilDue) === 1 ? "" : "s"}.`
+    : paymentTiming.isDueSoon
+      ? ` The payment is due in ${paymentTiming.daysUntilDue} day${paymentTiming.daysUntilDue === 1 ? "" : "s"}.`
+      : "";
   const reason = isPaymentAction
-    ? `${studentName} has ${formatCurrency(dueAmount)} pending for ${courseName}.`
+    ? `${studentName} has ${formatCurrency(dueAmount)} pending for ${courseName}.${paymentTimingMessage}`
     : isDropoutAction
       ? `${studentName} is marked dropout, so the agent prepared a reactivation attempt.`
       : followUpDate
@@ -882,8 +919,7 @@ export function buildAdmissionsActionPlan(portalRecords = []) {
   });
 
   const sortedActions = actions
-    .sort((left, right) => right.priorityScore - left.priorityScore)
-    .slice(0, 8);
+    .sort((left, right) => right.priorityScore - left.priorityScore);
 
   return {
     goal: "Autonomously identify high-value admissions work and prepare executable actions for the admin.",
